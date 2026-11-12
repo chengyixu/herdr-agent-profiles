@@ -83,13 +83,14 @@ async function open(env = app()) {
       cx.stopped++;
     },
   };
-  const view = new AgentProfiles();
-  view.init({}, cx);
+  const mod = new AgentProfiles();
+  mod.init({}, cx);
   await Promise.all(tasks);
+  const view = mod.part;
   const settle = async () => {
     await Promise.all(tasks);
   };
-  return { env, view, cx, settle, tree: () => view.render() };
+  return { env, view, cx, settle, tree: () => mod.render(cx) };
 }
 const names = (env) => env.commands.map(([n]) => n);
 
