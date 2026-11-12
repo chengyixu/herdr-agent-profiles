@@ -143,6 +143,15 @@ export function problem(profile, agent) {
   return null;
 }
 
+// What a list shows: each profile with its agent and why it cannot start (null: it can). Until
+// Herdr has said which agents exist (agents null), only the profile's own problems count.
+export function rowsFor(profiles, agents) {
+  return profiles.map((p) => {
+    const agent = agents?.find((a) => a.key === p.harness) ?? null;
+    return { p, agent, why: agents ? problem(p, agent) : (p.error ?? null) };
+  });
+}
+
 export function planLaunch({ profile, mode, agent, shell, here, home }) {
   const blocked = problem(profile, agent);
   if (blocked) return { error: blocked };

@@ -6,10 +6,11 @@
 import { View } from "gpui-kit";
 import { props } from "herdr";
 import { Popup } from "./popup.js";
+import { Sidebar } from "./sidebar.js";
 
 export default class AgentProfiles extends View {
   init(_props, cx) {
-    this.part = new Popup(cx);
+    this.part = props()?.view === "sidebar" ? new Sidebar(cx) : new Popup(cx);
   }
 
   render(cx) {

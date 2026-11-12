@@ -1,7 +1,7 @@
 import { div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input, ScrollHandle } from "gpui-base";
 import { closeOverlay, knownAgents, notify, props, theme } from "herdr";
-import { placement, problem, startProfile } from "./core.js";
+import { placement, rowsFor, startProfile } from "./core.js";
 import { currentTarget, loadProfiles, makeHost, profilesDir, tilde } from "./host.js";
 
 // The popup is as tall as its content, so the list needs a height of its own: a list that
@@ -43,15 +43,9 @@ export class Popup {
     });
   }
 
-  agentFor(profile) {
-    return this.agents?.find((a) => a.key === profile.harness) ?? null;
-  }
-
   rows() {
     const f = this.filter.trim().toLowerCase();
-    return (this.profiles ?? [])
-      .filter((p) => !f || p.name.includes(f) || (p.harness ?? "").includes(f))
-      .map((p) => ({ p, agent: this.agentFor(p), why: this.agents ? problem(p, this.agentFor(p)) : (p.error ?? null) }));
+    return rowsFor((this.profiles ?? []).filter((p) => !f || p.name.includes(f) || (p.harness ?? "").includes(f)), this.agents);
   }
 
   pickable() {

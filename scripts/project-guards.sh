@@ -26,9 +26,9 @@ rule "core.js imports nothing" \
 rule "No setTimeout/setInterval in the mod" \
   "Use cx.timer (Herdr's own); a redraw timer costs battery." \
   "$(grep -nE '(^|[^A-Za-z0-9_.])(setTimeout|setInterval)[[:space:]]*\(' "$MOD"/*.js)"
-rule "No host call at module scope in main.js" \
-  "Herdr shares module scope between copies: call home(), focused(), ... inside init/handlers." \
-  "$(grep -nE '^(const|let|var)[[:space:]].*=[[:space:]]*(home|appHome|focused|spaces|panes|terminals|knownAgents|settings|theme)\(' "$MOD/main.js")"
+rule "No host call at module scope in the mod" \
+  "Herdr shares module scope between copies: call home(), focused(), props(), ... inside a view." \
+  "$(grep -nE '^(const|let|var)[[:space:]].*=[[:space:]]*(home|appHome|focused|spaces|panes|terminals|knownAgents|settings|theme|props|layout)\(' "$MOD"/*.js)"
 
 # Generated files Herdr writes into an installed mod folder must never be committed.
 rule "No generated SDK files in the repo" \

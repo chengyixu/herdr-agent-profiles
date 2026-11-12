@@ -1,12 +1,13 @@
 // A recording stand-in for gpui-kit's element builders: every builder is chainable and a
-// no-op, except the few that carry meaning for a test (id, child, children, when, on_*).
-export const make = (tag) => {
-  const node = { $tag: tag, $kids: [], $on: {}, $id: null };
+// no-op, except the few that carry meaning for a test (id, child, children, when, on_*, tooltip).
+export const make = (tag, src = null) => {
+  const node = { $tag: tag, $kids: [], $on: {}, $id: null, $tip: null, $src: src };
   const proxy = new Proxy(function () {}, {
     get(_t, key) {
       if (typeof key === "symbol") return undefined;
       if (key.startsWith("$")) return node[key];
       if (key === "id") return (v) => ((node.$id = v), proxy);
+      if (key === "tooltip") return (v) => ((node.$tip = v), proxy);
       if (key === "child") return (c) => (node.$kids.push(c), proxy);
       if (key === "children") return (cs) => (node.$kids.push(...cs), proxy);
       if (key === "when") return (cond, fn) => (cond ? (fn(proxy) ?? proxy) : proxy);
@@ -18,8 +19,8 @@ export const make = (tag) => {
 };
 export class View {}
 export const div = () => make("div");
-export const svg = () => make("svg");
-export const image = () => make("image");
+export const svg = (src) => make("svg", src);
+export const image = (src) => make("image", src);
 
 export const walk = (node, fn) => {
   if (node === null || typeof node === "string" || typeof node === "number") return;

@@ -4,6 +4,7 @@ export const v_flex = () => make("v_flex");
 export const Input = { new: () => make("input") };
 export const InputState = {
   new: () => {
+    globalThis.__inputsCreated = (globalThis.__inputsCreated ?? 0) + 1;
     const state = { value_: "", handlers: {}, scrolled: [] };
     state.on = (event, fn) => ((state.handlers[event] = fn), true);
     state.value = () => state.value_;
