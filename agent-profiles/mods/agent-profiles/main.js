@@ -249,6 +249,6 @@ export default class AgentProfiles extends View {
       )
       .child(div().flex_none().text_size(11.5).text_color(this.starting ? t.accent : where.color).child(this.starting ? `Starting ${this.starting}…` : where.text))
       .child(body)
-      .child(div().flex_none().text_size(11).text_color(t.dim).child("↵ start here · ⇧↵ start in the profile folder · ↑↓ choose"));
+      .when((this.profiles ?? []).length > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child("↵ start here · ⇧↵ start in the profile folder · ↑↓ choose")));
   }
 }

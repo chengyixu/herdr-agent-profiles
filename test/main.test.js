@@ -97,6 +97,7 @@ test("the list shows every profile folder, and says why a broken one cannot star
   for (const name of ["reviewer", "ops"]) assert.match(text, new RegExp(`\\b${name}\\b`));
   assert.match(text, /Claude Code · CLAUDE\.md/);
   assert.match(text, /Pi · AGENTS\.md/);
+  assert.match(text, /start here/, "key hints are shown when there is something to choose");
   assert.match(text, /typo[\s\S]*unknown field "native_cwd"/);
   assert.match(text, /ghost[\s\S]*gemini cannot take instructions yet/);
   assert.match(text, /amp[\s\S]*amp is not installed/);
@@ -123,6 +124,7 @@ test("with no profile folder yet, the dialog explains how to make one", async ()
     assert.match(text, /No profiles yet/);
     assert.match(text, /agent-profiles\//);
     assert.match(text, /profile\.json/);
+    assert.doesNotMatch(text, /start here/, "no key hints when there is nothing to choose");
   } finally {
     root = saved;
   }

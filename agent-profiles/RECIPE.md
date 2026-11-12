@@ -15,7 +15,7 @@ This file is the brief: enough to build Agent profiles from an empty folder. The
 - A scrollable list of rows, 36px high. Each row: the harness icon (15px; one-color icons take the text color), the profile name (semibold), then a dim "<Harness name> · <AGENTS.md | CLAUDE.md | no instructions>". If the profile has a `cwd`, a bordered 24px chip on the right reads "in <cwd>".
 - A row that cannot start shows its name dim and the reason in the blocked color instead of the harness line, and has no chip.
 - With no profile folder: "No profiles yet. Make a folder named after the agent in ~/.config/herdr-app/agent-profiles/ with two files:" and the two example lines `profile.json   {"harness": "claude", "cwd": "~/code/app"}` and `AGENTS.md      its instructions (CLAUDE.md works too)`. With a filter that matches nothing: "No profile matches."
-- A footer (11px, dim): "↵ start here · ⇧↵ start in the profile folder · ↑↓ choose".
+- A footer (11px, dim): "↵ start here · ⇧↵ start in the profile folder · ↑↓ choose", shown only when there is at least one profile.
 - Theme colors only (`popover`, `background`, `accent`, `hover`, `border`, `foreground`, `muted`, `dim`, `blocked`). Text 13px.
 
 ## How it behaves
