@@ -1,0 +1,5 @@
+{
+  "place": "none",
+  "title": "Agent profiles",
+  "overlay": { "kind": "popup", "at": "top", "offset": 64, "width": 560, "height": 470 }
+}

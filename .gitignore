@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.log
+
+# Written into a mod folder by `herdr-app check` / the running app: never part of the mod.
+gpui-kit.d.ts
+herdr.d.ts
+jsconfig.json

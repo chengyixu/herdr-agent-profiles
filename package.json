@@ -1,0 +1,10 @@
+{
+  "name": "herdr-agent-profiles",
+  "private": true,
+  "type": "module",
+  "description": "Herdr mod: persistent agent profiles (harness + AGENTS.md/CLAUDE.md) spawned into the current pane.",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "verify": "bash scripts/verify-source.sh"
+  }
+}

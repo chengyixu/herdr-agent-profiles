@@ -1,0 +1,4 @@
+{
+  "global": { "ctrl-shift-a": "mod.open:agent-profiles" },
+  "terminal": { "ctrl-shift-a": "mod.open:agent-profiles" }
+}
