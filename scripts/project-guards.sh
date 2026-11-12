@@ -38,7 +38,7 @@ rule "No generated SDK files in the repo" \
 # Publishing: nothing personal in a public repo.
 rule "No personal paths, hosts or tokens" \
   "Use ~ or a placeholder; never a real home folder, machine name or key." \
-  "$(git -C "$ROOT" grep --cached --untracked -nIE '(/Users/[a-z][a-z0-9_.-]*|/home/[a-z][a-z0-9_.-]*/|wilsonxu|gh[pous]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' -- . ':(exclude)scripts/project-guards.sh' 2>/dev/null | grep -vE '/Users/me\b')"
+  "$(git -C "$ROOT" grep --untracked -nIE '(/Users/[a-z][a-z0-9_.-]*|/home/[a-z][a-z0-9_.-]*/|wilsonxu|gh[pous]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' -- . ':(exclude)scripts/project-guards.sh' 2>/dev/null | grep -vE '/Users/me\b')"
 
 # The bundle shape the Herdr gallery indexes.
 missing=""
@@ -47,7 +47,7 @@ for f in RECIPE.md keys.json mods/agent-profiles/main.js mods/agent-profiles/mod
 rule "Bundle has RECIPE.md, preview.png, keys.json and the mod" "Restore the missing file." "$(printf '%b' "$missing" | sed '/^$/d')"
 rule "preview.png is a readable PNG" \
   "Replace it with a screenshot of the real mod." \
-  "$([ -f "$BUNDLE/preview.png" ] && ! head -c 8 "$BUNDLE/preview.png" | grep -q $'\x89PNG' && echo "$BUNDLE/preview.png is not a PNG")"
+  "$([ -f "$BUNDLE/preview.png" ] && ! node -e 'process.exit(require("fs").readFileSync(process.argv[1]).subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])) ? 0 : 1)' "$BUNDLE/preview.png" && echo "$BUNDLE/preview.png is not a PNG")"
 
 # JSON files parse; the mod and its keys agree on the mod's name.
 bad=""
