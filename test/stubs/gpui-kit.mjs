@@ -11,6 +11,7 @@ export const make = (tag, src = null) => {
       if (key === "child") return (c) => (node.$kids.push(c), proxy);
       if (key === "children") return (cs) => (node.$kids.push(...cs), proxy);
       if (key === "when") return (cond, fn) => (cond ? (fn(proxy) ?? proxy) : proxy);
+      if (key === "on_mouse_down") return (button, fn) => ((node.$on[`on_mouse_down:${button}`] = fn), proxy);
       if (key.startsWith("on_")) return (...a) => ((node.$on[key] = a[a.length - 1]), proxy);
       return () => proxy;
     },

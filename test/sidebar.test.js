@@ -53,6 +53,9 @@ function app({ failOn = null, width = 268, focus = "pA" } = {}) {
     terminals: () => [],
     knownAgents: async () => AGENTS,
     props: () => ({ view: "sidebar" }),
+    window: () => ({ platform: "macos" }),
+    overlays: [],
+    openOverlay: (spec) => (env.overlays.push(spec), "ov"),
     closeOverlay: (id) => env.closed.push(id),
     notify: (n) => env.notified.push(n),
     // Each call waits until the test fires it: resolve() = something changed, reject() = no folder.
@@ -96,9 +99,46 @@ test("the sidebar shows a Profiles header and one row per profile", async () => 
   assert.match(text, /Profiles/);
   for (const n of ["general", "klik-agent", "broken"]) assert.ok(find(tree(), `ap-side-${n}`), n);
   assert.ok(find(tree(), "ap-side-general").$on.on_click, "a startable row is clickable");
-  assert.equal(find(tree(), "ap-side-broken").$on.on_click, undefined, "a broken row is not");
   assert.match(find(tree(), "ap-side-broken").$tip, /includes "nowhere", which is not a profile/);
   assert.match(find(tree(), "ap-side-klik-agent").$tip, /Claude Code · general \+ CLAUDE\.md/);
+});
+
+test("a plain click on a row that cannot start starts nothing", async () => {
+  const { env, cx, tree } = await sidebar();
+  find(tree(), "ap-side-broken").$on.on_click?.({ modifiers: {} }, cx);
+  await tick();
+  assert.deepEqual(env.commands, []);
+  assert.deepEqual(env.notified, [], "no error toast either: the row already says why");
+  assert.deepEqual(env.overlays, []);
+});
+
+test("right-click opens the options menu for that profile, at the pointer, and starts nothing", async () => {
+  const { env, cx, tree } = await sidebar();
+  for (const name of ["klik-agent", "broken"]) {
+    find(tree(), `ap-side-${name}`).$on["on_mouse_down:right"]({}, cx);
+    await tick();
+    const spec = env.overlays.at(-1);
+    assert.equal(spec.mod, "agent-profiles");
+    assert.equal(spec.kind, "popup");
+    assert.deepEqual(spec.props, { view: "menu", profile: name, pane: "pA" });
+    assert.ok(spec.height > 100, "sized for its rows");
+  }
+  assert.deepEqual(env.commands, []);
+});
+
+test("Option-click (or Control-click) opens the menu instead of starting", async () => {
+  const { env, cx, tree } = await sidebar();
+  for (const modifiers of [{ alt: true }, { control: true }]) {
+    find(tree(), "ap-side-general").$on.on_click({ modifiers }, cx);
+    await tick();
+  }
+  assert.equal(env.overlays.length, 2);
+  assert.deepEqual(env.commands, []);
+});
+
+test("the tooltip says a right-click shows the options", async () => {
+  const { tree } = await sidebar();
+  assert.match(find(tree(), "ap-side-general").$tip, /right-click for options/i);
 });
 
 test("the sidebar never takes the keyboard from the terminal", async () => {

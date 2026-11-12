@@ -3,9 +3,14 @@
 // pane at click time and reloads when the profile folder changes. It never takes the keyboard.
 import { div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { focused, knownAgents, layout, notify, theme, watchFolder } from "herdr";
+import { focused, knownAgents, layout, notify, openOverlay, theme, watchFolder } from "herdr";
 import { rowsFor, startProfile } from "./core.js";
 import { currentTarget, loadProfiles, makeHost, profilesDir, tilde } from "./host.js";
+import { menuHeight, menuItems, menuState } from "./menu.js";
+
+const MENU_WIDTH = 300;
+// Option-click opens the menu too; Control-click is the Mac's right-click.
+const wantsMenu = (e) => Boolean(e?.modifiers?.alt || e?.modifiers?.control);
 
 // The profile folder may not exist yet, and a watch on it then fails: look again this often.
 const RETRY_MS = 10000;
@@ -70,6 +75,15 @@ export class Sidebar {
     });
   }
 
+  // The options menu for one profile, sized for its rows, at the pointer.
+  openMenu(p, cx) {
+    const pane = focused()?.pane ?? this.lastPane;
+    cx.spawn(async () => {
+      const state = await menuState(p.name);
+      openOverlay({ mod: "agent-profiles", kind: "popup", width: MENU_WIDTH, height: menuHeight(menuItems(state)), props: { view: "menu", profile: p.name, pane } });
+    });
+  }
+
   icon(t, agent, dim) {
     if (!agent?.icon) return div().w(16).flex_none();
     return agent.tint ? svg(agent.icon).size(16).flex_none().text_color(dim ? t.dim : t.foreground) : image(agent.icon).size(16).flex_none();
@@ -77,13 +91,18 @@ export class Sidebar {
 
   row(t, { p, agent, why }, rail) {
     const docs = p.docs?.length ? p.docs.map((d) => d.label).join(" + ") : "no instructions";
-    const tip = why ? `${p.name}: ${why}` : `${p.name} · ${agent?.name ?? p.harness} · ${docs}`;
+    const tip = `${why ? `${p.name}: ${why}` : `${p.name} · ${agent?.name ?? p.harness} · ${docs}`} (right-click for options)`;
     const base = h_flex()
       .id(`ap-side-${p.name}`)
       .flex_none()
       .items_center()
       .tooltip(tip)
-      .when(!why, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.start(p, "here", cx)));
+      .on_mouse_down("right", (_e, cx) => {
+        cx.stop_propagation();
+        this.openMenu(p, cx);
+      })
+      .on_click((e, cx) => (wantsMenu(e) ? this.openMenu(p, cx) : why ? null : this.start(p, "here", cx)))
+      .when(!why, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)));
     if (rail) return base.h(26).justify_center().child(this.icon(t, agent, why));
     return base
       .h(30)

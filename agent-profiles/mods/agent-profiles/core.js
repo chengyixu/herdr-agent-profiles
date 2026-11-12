@@ -94,6 +94,51 @@ export function resolveIncludes(profiles) {
   });
 }
 
+// ---- Editing a profile (the options menu) -------------------------------------------
+
+const CHANGES = ["harness", "cwd", "include"];
+
+// The new profile.json text after a change ({ harness?, cwd? (null clears), include? }), or
+// { error }. A file that does not load is never overwritten, and a change that would leave it
+// unloadable is refused, so the menu can only ever write a valid profile.
+export function editProfile(name, jsonText, change) {
+  const unknown = Object.keys(change).filter((k) => !CHANGES.includes(k));
+  if (unknown.length) return { error: `unknown change ${unknown.join(", ")}` };
+  const current = parseProfile(name, jsonText);
+  if (current.error) return { error: current.error };
+  const next = { ...current.profile, ...change };
+  const out = { harness: typeof next.harness === "string" ? next.harness.trim() : next.harness };
+  if (next.cwd != null) out.cwd = next.cwd;
+  if (next.include?.length) out.include = next.include;
+  const text = `${JSON.stringify(out, null, 2)}\n`;
+  const check = parseProfile(name, text);
+  return check.error ? { error: check.error } : { text };
+}
+
+// An absolute folder as profile.json stores it: under the home folder, with ~.
+export function homeRelative(path, home) {
+  const p = path.length > 1 ? path.replace(/\/+$/, "") : path;
+  const h = home.replace(/\/+$/, "");
+  if (p === h) return "~";
+  return p.startsWith(`${h}/`) ? `~${p.slice(h.length)}` : p;
+}
+
+// The file a new document gets: the harness's own name.
+export const newDocName = (harness) => (harness === "claude" ? "CLAUDE.md" : "AGENTS.md");
+
+// Which profiles `name` may include (loaded and resolved profiles): one level deep, so only
+// profiles with a document of their own that include nothing. A profile others include may not
+// include anything itself (usedBy says who), or those others would break.
+export function includeChoices(profiles, name) {
+  const usedBy = profiles.filter((p) => !p.error && p.include.includes(name)).map((p) => p.name).sort();
+  if (usedBy.length) return { choices: [], usedBy };
+  const choices = profiles
+    .filter((p) => p.name !== name && !p.error && p.include.length === 0 && p.docs.length > 0)
+    .map((p) => p.name)
+    .sort();
+  return { choices, usedBy };
+}
+
 export function expandHome(path, home) {
   if (path === "~") return home;
   if (path.startsWith("~/")) return `${home.replace(/\/+$/, "")}/${path.slice(2)}`;

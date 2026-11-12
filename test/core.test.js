@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ADAPTERS,
+  editProfile,
   expandHome,
+  homeRelative,
+  includeChoices,
+  newDocName,
   parseProfile,
   pickDoc,
   placement,
@@ -133,6 +137,58 @@ test("resolveIncludes refuses an include that cannot be honoured, and says why",
   assert.match(why.c, /includes "empty", which has no instructions/);
   assert.match(why.d, /includes "layered", which includes others/);
   for (const p of out.filter((p) => p.error)) assert.equal(p.docs, undefined, `${p.name} must not be startable`);
+});
+
+// ---- editing a profile ----------------------------------------------------------
+
+test("editProfile changes one field and writes the file in one canonical form", () => {
+  const before = '{ "harness": "pi", "cwd": "~/Klik", "include": ["general"] }\n';
+  assert.deepEqual(editProfile("klik", before, { harness: "claude" }), {
+    text: '{\n  "harness": "claude",\n  "cwd": "~/Klik",\n  "include": [\n    "general"\n  ]\n}\n',
+  });
+  const cleared = JSON.parse(editProfile("klik", before, { cwd: null, include: [] }).text);
+  assert.deepEqual(cleared, { harness: "pi" }, "an empty folder or include list is left out");
+  assert.deepEqual(JSON.parse(editProfile("klik", '{"harness":"pi"}', { cwd: "/srv/app", include: ["general", "base"] }).text), {
+    harness: "pi",
+    cwd: "/srv/app",
+    include: ["general", "base"],
+  });
+});
+
+test("editProfile refuses to write a profile that would not load, and never overwrites a broken file", () => {
+  assert.match(editProfile("klik", "{nope", { harness: "pi" }).error, /profile\.json is not valid JSON/);
+  assert.match(editProfile("klik", '{"harness":"pi"}', { cwd: "src" }).error, /cwd/);
+  assert.match(editProfile("klik", '{"harness":"pi"}', { include: ["klik"] }).error, /itself/);
+  assert.match(editProfile("klik", '{"harness":"pi"}', { harness: " " }).error, /harness/);
+  assert.match(editProfile("klik", '{"harness":"pi"}', { nonsense: 1 }).error, /unknown change/);
+});
+
+test("homeRelative writes a folder under the home folder with ~", () => {
+  assert.equal(homeRelative("/Users/me/Klik", HOME), "~/Klik");
+  assert.equal(homeRelative("/Users/me", HOME), "~");
+  assert.equal(homeRelative(`${HOME}ow/x`, HOME), `${HOME}ow/x`, "a longer name is not inside the home folder");
+  assert.equal(homeRelative("/srv/app/", HOME), "/srv/app");
+});
+
+test("newDocName follows the harness", () => {
+  assert.equal(newDocName("claude"), "CLAUDE.md");
+  assert.equal(newDocName("pi"), "AGENTS.md");
+  assert.equal(newDocName("codex"), "AGENTS.md");
+});
+
+test("includeChoices offers only profiles that can be included, and blocks a profile others include", () => {
+  const docs = [{ path: "/x", text: "x", label: "AGENTS.md" }];
+  const all = [
+    { name: "general", harness: "pi", include: [], docs },
+    { name: "base", harness: "pi", include: [], docs },
+    { name: "empty", harness: "pi", include: [], docs: [] },
+    { name: "layered", harness: "pi", include: ["general"], docs },
+    { name: "broken", error: "bad" },
+    { name: "klik", harness: "pi", include: ["general"], docs: [] },
+  ];
+  assert.deepEqual(includeChoices(all, "klik"), { choices: ["base", "general"], usedBy: [] });
+  assert.deepEqual(includeChoices(all, "general"), { choices: [], usedBy: ["klik", "layered"] });
+  assert.deepEqual(includeChoices(all, "empty").choices, ["base", "general"]);
 });
 
 // ---- expandHome / pickDoc ----------------------------------------------------
