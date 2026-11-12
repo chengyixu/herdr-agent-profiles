@@ -19,6 +19,8 @@ it is built this way is in [docs/adr/0001](docs/adr/0001-spawn-into-the-current-
 | How to start an agent | Herdr's program table (`knownAgents().run`, `programs.json`) |
 | A profile | `~/.config/herdr-app/agent-profiles/<name>/` (`$HERDR_APP_HOME` respected through `appHome()`) |
 | Which flag attaches a document to which harness | `ADAPTERS` in `core.js`, proven by `scripts/verify-harnesses.mjs` |
+| Which documents a profile attaches, in order | `resolveIncludes()` in `core.js` (`include` in `profile.json`) |
+| Rules shared by several profiles | one profile's document, included by the others |
 | Whether a profile can start, and why not | `problem()` in `core.js`: the list greys a row out with it, the launcher refuses with it |
 | Replace or beside | `placement()` in `core.js`, used by both the dialog's hint and the start |
 
@@ -56,6 +58,7 @@ What each layer is for:
 | A pi prompt-size observable was flaky | dropped, not tuned |
 | A first "RED" was only a CLI usage error (`node --test test/`) | the script uses an explicit glob; the RED was redone against the missing module |
 | A harness without an adapter would start without its instructions and look fine | `problem()` refuses it; tested in the list and in the launcher |
+| Claude Code keeps only the **last** of a repeated `--append-system-prompt-file`: an included document was silently dropped (ADR 0002) | the live contract check asks for a codeword from each of two documents; Claude now takes one inline value |
 
 Every unit and glue test was also mutation-checked: the dangerous mutations (close before create, ignore sub-agent
 children, swallow a failed open, drop DEL escaping, skip the adapter check, ignore Shift+Enter, remove the

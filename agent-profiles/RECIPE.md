@@ -12,7 +12,7 @@ This file is the brief: enough to build Agent profiles from an empty folder. The
 - A heading, "Agent profiles" (15px, semibold), with "Esc" on the right in the dim text color.
 - A filter field, 36px high, rounded, with an accent-colored border and the placeholder "Start an agent profile…".
 - One hint line under it (11.5px). Normally dim: "Takes over this idle shell · ~/folder" or "Opens beside this pane · ~/folder". In the blocked color: "This space is on <machine>. Remote spaces are not supported yet." or "Focus a pane first." While a start is running: "Starting <name>…" in the accent color.
-- A scrollable list of rows, 36px high. Each row: the harness icon (15px; one-color icons take the text color), the profile name (semibold), then a dim "<Harness name> · <AGENTS.md | CLAUDE.md | no instructions>". If the profile has a `cwd`, a bordered 24px chip on the right reads "in <cwd>".
+- A scrollable list of rows, 36px high. Each row: the harness icon (15px; one-color icons take the text color), the profile name (semibold), then a dim "<Harness name> · <documents>": the included profiles' names and then its own file name, joined by " + " (for example "Claude Code · general + CLAUDE.md"), or "no instructions". If the profile has a `cwd`, a bordered 24px chip on the right reads "in <cwd>".
 - A row that cannot start shows its name dim and the reason in the blocked color instead of the harness line, and has no chip.
 - With no profile folder: "No profiles yet. Make a folder named after the agent in ~/.config/herdr-app/agent-profiles/ with two files:" and the two example lines `profile.json   {"harness": "claude", "cwd": "~/code/app"}` and `AGENTS.md      its instructions (CLAUDE.md works too)`. With a filter that matches nothing: "No profile matches."
 - A footer (11px, dim): "↵ start here · ⇧↵ start in the profile folder · ↑↓ choose", shown only when there is at least one profile.
@@ -28,10 +28,10 @@ The key (`ctrl-shift-a`) opens the popup with the filter focused. The focused pa
 - If the focused pane is an idle shell with no sub-agents under it, the agent **takes its place**: same slot, size and focus, and a maximized pane stays maximized. Otherwise (a running program, an agent, a mod pane, a shell that owns sub-agents) the agent opens **beside** it. Nothing that is running is ever closed.
 - The new terminal is always created first. The old pane is closed only after that worked. If it cannot be created (for example, the folder does not exist) the old pane is untouched and an error toast says why.
 - The popup stays open until the start has finished, shows "Starting <name>…", ignores a second start, then closes. A failure shows an error toast titled "Could not start <name>".
-- A profile that cannot start (broken `profile.json`, harness unknown or not installed, a document for a harness with no verified way to attach it) is listed with the reason and cannot be chosen.
+- A profile that cannot start (broken `profile.json`, harness unknown or not installed, a document for a harness with no verified way to attach it, an `include` that names no profile, a broken one, one without a document or one that includes others) is listed with the reason and cannot be chosen.
 - Esc closes the popup. Nothing is written anywhere.
 
-A profile is a folder: `profile.json` with `{"harness": "<program key>", "cwd": "<optional>"}` (unknown fields are an error) and a document, `AGENTS.md` or `CLAUDE.md`. The harness's own file name wins if both exist; a blank document counts as none.
+A profile is a folder: `profile.json` with `{"harness": "<program key>", "cwd": "<optional>", "include": ["<optional profile names>"]}` (unknown fields are an error) and a document, `AGENTS.md` or `CLAUDE.md`. The harness's own file name wins if both exist; a blank document counts as none. `include` attaches the named profiles' documents first, in order, so rules shared by several agents have one home; only their documents are used, not their harness or folder, and only one level deep.
 
 ## Built from
 
@@ -46,7 +46,7 @@ A profile is a folder: `profile.json` with `{"harness": "<program key>", "cwd": 
   ```
 - **Herdr APIs:** `focused()`, `spaces()`, `panes()` (`terminal`, `cwd`, `status`, `zoomed`, `program.shell`), `terminals()` (`parent`, `state`), `knownAgents()` (`key`, `name`, `run`, `installed`, `icon`, `tint`), `exec`, `notify`, `appHome()`, `home()`, `props()`, `closeOverlay`, `theme()`, and `readdir` / `readFile` from `fs/promises`. UI from `gpui-kit` and `gpui-base` (`InputState`, `Input`, `ScrollHandle`, `h_flex`, `v_flex`). Host calls are made in `init`, never at module scope.
 - **The harness command** is `knownAgents().run`, so `programs.json` overrides (extra flags) apply to every profile.
-- **Attaching the document**, one entry per harness in `ADAPTERS`: Claude `--append-system-prompt-file <path>`; Pi `--append-system-prompt <path>`; Codex `-c developer_instructions=<TOML string>` (the file's text as a JSON string, with DEL written as `\u007f`; additive, unlike `model_instructions_file`, which replaces Codex's built-in prompt). A harness not in the table is refused when its profile has a document.
+- **Attaching the documents**, one entry per harness in `ADAPTERS`, each given every document in order: Claude one `--append-system-prompt=<texts>` (Claude Code keeps only the last of a repeated `--append-system-prompt-file`; the `=` form keeps a document that starts with `-` from reading as a flag); Pi `--append-system-prompt <path>` once per document; Codex one `-c developer_instructions=<TOML string>` (the texts as a JSON string, with DEL written as `\u007f`; additive, unlike `model_instructions_file`, which replaces Codex's built-in prompt). Several texts are joined with a blank line. A harness not in the table is refused when its profile has a document. `resolveIncludes` in `core.js` turns the loaded profiles into each one's document list.
 - **The launch** goes through `herdr-app do` (run with `exec`), because each step needs the answer from the one before:
   1. `pane.focus {pane}`
   2. `terminal.open {argv, folder?, place: "right"}` with `argv = [$SHELL, "-l", "-i", "-c", "\"$@\"; exec \"$0\" -l -i", $SHELL, ...harnessCommand, ...documentFlag]`. Herdr starts a split pane's program directly with a bare PATH, so the login shell is what finds nvm-installed tools; the arguments travel unquoted, and a shell stays open after the agent exits. `$SHELL` is read with `sh -c 'printf %s "$SHELL"'`.
@@ -74,8 +74,8 @@ Checked while building (on the versions above):
 - `herdr-app check mods/agent-profiles` passes.
 - The unit tests (the rules and the order of the steps) and the UI-glue tests (loading, row states, click, Enter, Shift+Enter, failure toast, double-start guard) pass, and each dangerous mutation turns a test red.
 - The wrapper delivers a 20 KB argument with quotes, `$`, backticks, CRLF, DEL, CJK and emoji byte for byte through zsh, bash, sh, dash and ksh.
-- Each harness accepts its flag: Claude answers from the appended file; Pi's assembled system prompt contains it; Codex's model-visible prompt contains it as a developer message. Each is absent without the flag.
-- In a running Herdr, with real Claude, Pi and Codex: an idle shell is replaced by the agent in the same slot; the agent is the foreground process in the requested folder with the document attached; a busy pane is left alone; a start into a folder that does not exist leaves the old pane untouched.
+- Each harness takes two documents, the included one first: Claude answers with a marker from each (the first document starts with "- "); Pi's assembled system prompt contains both, in order; Codex's model-visible prompt contains both as one developer message, in order. Each is absent without the flag.
+- In a running Herdr, with real Claude, Pi and Codex: an idle shell is replaced by the agent in the same slot; the agent is the foreground process in the requested folder, launched with an included and its own document attached, the included one first; a busy pane is left alone; a start into a folder that does not exist leaves the old pane untouched.
 - In a running Herdr, once, with a stand-in agent (not a recurring script): a replaced maximized pane comes back maximized, and a maximized busy pane is split beside as splits normally are.
 
 Still needs a person with a visible window:

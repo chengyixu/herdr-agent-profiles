@@ -54,7 +54,9 @@ argv = [$SHELL, "-l", "-i", "-c", '"$@"; exec "$0" -l -i', $SHELL, ...harnessCom
 
 Each harness takes a persistent document its own way. Each mechanism was proven, not assumed:
 
-- Claude Code: `--append-system-prompt-file <path>`: a live model answered from the file.
+- Claude Code: `--append-system-prompt-file <path>`: a live model answered from the file. (Superseded by
+  [ADR 0002](0002-include-shared-documents.md): Claude keeps only the last repeated file flag, so it now takes
+  the documents inline as one `--append-system-prompt=<texts>`.)
 - Pi: `--append-system-prompt <path>`: the file text is in the system prompt pi assembles (pi blanks its own argv,
   so the live run is read from the launch argv the core records).
 - Codex: `-c developer_instructions=<TOML string>`: `codex debug prompt-input` shows it verbatim as a `developer`

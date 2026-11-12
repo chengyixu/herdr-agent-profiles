@@ -1,1 +1,1 @@
-{ "harness": "claude" }
+{ "harness": "claude", "include": ["base"] }

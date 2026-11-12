@@ -51,12 +51,30 @@ One folder per agent, in `~/.config/herdr-app/agent-profiles/`. The folder name 
 |---|---|
 | `harness` | Required. The key of an agent in Herdr's program table: `claude`, `codex`, `pi`, ... |
 | `cwd` | Optional. The agent's own folder: an absolute path or `~/...`. Without it, only "start here" is offered. |
+| `include` | Optional. Other profiles whose document is attached first, in order: `["general"]`. |
 
 Unknown fields are an error, not ignored, so a typo cannot silently change what starts.
 Copy the folders in [`examples/profiles/`](examples/profiles) to try it.
 
 The document is `AGENTS.md` or `CLAUDE.md`. The harness's own name wins when both exist, so a profile
 survives a change of harness. A blank document counts as none.
+
+### Share one document: `include`
+
+When several agents follow the same rules, keep the rules in one profile and include it. Edit it once,
+and every profile that includes it starts with the new text.
+
+```
+agent-profiles/
+├── general/         { "harness": "pi" }                                      + AGENTS.md  (the shared rules)
+├── app-general/     { "harness": "pi", "cwd": "~/code/app", "include": ["general"] }
+└── app-agent/       { "harness": "claude", "cwd": "~/code/app", "include": ["general"] }  + CLAUDE.md  (its own part)
+```
+
+The list shows what goes with each agent: `Claude Code · general + CLAUDE.md`. Only the included profile's
+document is used, not its harness or folder. One level: a profile that includes others cannot itself be
+included. An include that names no profile, a broken one, or one without a document makes the profile
+unusable, with the reason in the list, rather than starting it without part of its instructions.
 
 ## What "start here" does
 
@@ -70,14 +88,16 @@ pane is closed only after that worked. If the agent cannot start, the old pane i
 
 ## Harnesses
 
-| Harness | How the document is attached | Checked against |
+| Harness | How the documents are attached | Checked against |
 |---|---|---|
-| Claude Code | `--append-system-prompt-file <path>` | `claude` 2.1.316: a live model returned a marker from the file |
-| Pi | `--append-system-prompt <path>` | `pi` 1.5.2: the marker is in the assembled system prompt |
-| Codex | `-c developer_instructions=<text>` | `codex` 0.166.0: the text is a `developer` message, verbatim |
+| Claude Code | `--append-system-prompt=<texts>` (one value) | `claude` 2.1.316: a live model returned a marker from each of two documents |
+| Pi | `--append-system-prompt <path>`, once per document | `pi` 1.5.2: both markers are in the assembled system prompt, in order |
+| Codex | `-c developer_instructions=<texts>` (one value) | `codex` 0.166.0: the texts are one `developer` message, verbatim and in order |
 
-Codex gets the text as *additional* developer instructions. The `model_instructions_file` option replaces
-Codex's built-in prompt, so it is not used.
+With several documents, the texts are joined with a blank line between them. Claude Code keeps only the
+**last** of a repeated `--append-system-prompt-file`, so Claude gets one inline value. The `=` form keeps a
+document that starts with `-` (a markdown bullet) from reading as a flag. Codex gets the text as *additional*
+developer instructions. Its `model_instructions_file` option replaces Codex's built-in prompt, so it is not used.
 
 Another harness starts fine **without** a document. With a document it is refused with a clear message
 ("gemini cannot take instructions yet") rather than started without its instructions. To add one, add a line to `ADAPTERS` in `core.js` and a check
@@ -94,16 +114,17 @@ and every profile follows:
 
 ```
 main.js    the dialog; wires Herdr's APIs into core's `host`        (UI, thin)
-core.js    parse a profile, pick the document, plan the launch,     (pure: imports nothing)
+core.js    parse a profile, resolve its documents, plan the launch,  (pure: imports nothing)
            decide replace or beside, and run the steps in order
 ```
 
 `core.js` returns the steps; `main.js` runs them with `herdr-app do`, the app's own command line, because
 it answers with what it made or why it could not, and the next step depends on that.
 
-1. Read the profile folder: `profile.json` and the document.
+1. Read every profile folder: `profile.json` and its document. Resolve `include`: the included documents
+   first, then the profile's own.
 2. Ask Herdr which agents exist and how to start each (`knownAgents()`).
-3. Build the argument list: the harness command, then the instruction flag.
+3. Build the argument list: the harness command, then the instruction flags.
 4. Wrap it in your login shell: `$SHELL -l -i -c '"$@"; exec "$0" -l -i' $SHELL <command...>`.
    Herdr starts a split pane's program directly with a bare PATH, so tools installed by nvm or a shell profile
    would not be found. The login shell finds them, the arguments travel unquoted and byte for byte,

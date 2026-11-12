@@ -60,15 +60,20 @@ rule "keys.json opens the mod that exists" \
   "$(grep -oE 'mod\.open:[a-z0-9_-]+' "$BUNDLE/keys.json" | sort -u | while read -r b; do [ -d "$BUNDLE/mods/${b#mod.open:}" ] || echo "$b has no mods/${b#mod.open:}"; done)"
 
 # Every example profile must be valid for the code that will read it.
-rule "Example profiles parse with core.js" \
+rule "Example profiles load with core.js, includes resolved" \
   "Fix the example; it is the first thing a user copies." \
   "$(cd "$ROOT" && node --input-type=module -e '
     import { readdirSync, readFileSync } from "node:fs";
-    import { parseProfile } from "./agent-profiles/mods/agent-profiles/core.js";
-    for (const n of readdirSync("examples/profiles")) {
-      const r = parseProfile(n, readFileSync(`examples/profiles/${n}/profile.json`, "utf8"));
-      if (r.error) console.log(`examples/profiles/${n}: ${r.error}`);
-    }')"
+    import { parseProfile, pickDoc, resolveIncludes } from "./agent-profiles/mods/agent-profiles/core.js";
+    const loaded = readdirSync("examples/profiles").map((n) => {
+      const dir = `examples/profiles/${n}`;
+      const r = parseProfile(n, readFileSync(`${dir}/profile.json`, "utf8"));
+      if (r.error) return { name: n, error: r.error };
+      const file = pickDoc(r.profile.harness, readdirSync(dir));
+      return { ...r.profile, doc: file ? { path: `${dir}/${file}`, text: readFileSync(`${dir}/${file}`, "utf8") } : null };
+    });
+    for (const p of resolveIncludes(loaded)) if (p.error) console.log(`examples/profiles/${p.name}: ${p.error}`);
+  ')"
 
 echo "────────────────────────────────────────────────────────────────"
 if [ "$fail" -gt 0 ]; then red "project-guards FAILED: $fail rule(s)."; exit 1; fi
