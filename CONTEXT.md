@@ -59,6 +59,8 @@ What each layer is for:
 | A first "RED" was only a CLI usage error (`node --test test/`) | the script uses an explicit glob; the RED was redone against the missing module |
 | A harness without an adapter would start without its instructions and look fine | `problem()` refuses it; tested in the list and in the launcher |
 | A sidebar test passed for the wrong reason: it redrew after moving focus, so a block that remembered only the last pane it drew also passed | the test clicks a row drawn before the focus moved; mutation-checked |
+| The options menu listed every installed agent: on this Mac 15, so the menu ran off the window (seen on screen) | it offers only the harnesses that can take instructions, plus the current one; tested |
+| A mutation check found two weak tests: a cancelled folder picker and a click on a broken row could have shown an error toast unnoticed | both tests now also require no toast |
 | Claude Code keeps only the **last** of a repeated `--append-system-prompt-file`: an included document was silently dropped (ADR 0002) | the live contract check asks for a codeword from each of two documents; Claude now takes one inline value |
 
 Every unit and glue test was also mutation-checked: the dangerous mutations (close before create, ignore sub-agent

@@ -10,7 +10,8 @@ in the agent's own folder. The instructions go with it every time.
 - **Enter** starts the agent here: in the focused pane, in that pane's current folder.
 - **Shift+Enter** (or click `in ~/code/app`) starts it in the profile's own folder.
 - **In the sidebar**, optional: a "Profiles" list under Herdr's Agents list. Click a profile to start it here;
-  click its folder icon to start it in its own folder.
+  click its folder icon to start it in its own folder. **Right-click** (or Option-click) it for its options:
+  harness, folder, which shared instructions it attaches, and its files.
 - The instructions are attached the harness's own way, in every case. Nothing is pasted as a first message.
 
 The same idea as the native agent profiles in [OhMyHerdr](https://github.com/chengyixu/oh-my-herdr),
@@ -61,6 +62,19 @@ The list:
 
 - **Click** a profile to start it in the pane you were last in. **Click the folder icon** to start it in the
   profile's own folder. A profile that cannot start is dimmed; hover it to see why.
+- **Right-click** a profile (or Option-click, or Control-click) for its options menu:
+  - Start here, or in its own folder.
+  - **Harness**: Claude Code, Codex or Pi, the ones that can take instructions. Another harness can be set in
+    `profile.json` and then shows here too.
+  - **Folder**: choose one with the system picker (stored as `~/...`), or none (it starts where you are).
+  - **Also attach the instructions of**: tick other profiles to `include`. A profile that others attach cannot
+    attach any itself; the menu says who attaches it.
+  - **Edit instructions** opens its `AGENTS.md`/`CLAUDE.md` in your text editor, creating an empty one named for
+    the harness if there is none. **Edit profile.json** and **Show in Finder** open its files.
+
+  A change rewrites `profile.json` at once and the list updates. The menu only writes a profile that loads, never
+  overwrites a `profile.json` it cannot read (it offers to open it instead), and refuses if the file changed since
+  it was read.
 - It follows the profile folder: add, edit or remove a profile and the list updates by itself.
 - It never takes the keyboard from your terminal. On the narrow sidebar rail it shows icons only.
 
@@ -145,6 +159,7 @@ and every profile follows:
 main.js    picks the view from the block's props: popup or sidebar
 popup.js   the dialog (opened with a key; reads its target once)
 sidebar.js the sidebar list (reads its target at click time; follows the folder)
+menu.js    the options menu (right-click): start, and change profile.json through core's editProfile
 host.js    wires Herdr's APIs into core's `host`: loading, launching
 core.js    parse a profile, resolve its documents, plan the launch,  (pure: imports nothing)
            decide replace or beside, and run the steps in order
@@ -164,14 +179,15 @@ it answers with what it made or why it could not, and the next step depends on t
 5. `terminal.open` beside the focused pane, in the chosen folder. Then, for an idle shell, `pane.close` on
    the old pane (and `pane.zoom` on the new one if the old was maximized).
 
-Why these choices are in [`docs/adr/`](docs/adr/0001-spawn-into-the-current-pane.md) (0001 the launch, 0002 `include`, 0003 the sidebar).
+Why these choices are in [`docs/adr/`](docs/adr/0001-spawn-into-the-current-pane.md) (0001 the launch, 0002 `include`, 0003 the sidebar, 0004 the options menu).
 
 ## Good to know
 
 - Local spaces only. In a space on another machine the dialog says so and starts nothing.
 - Login shells: zsh, bash, sh, dash, ksh. fish and others are refused with a message until verified.
-- What the mod touches: it reads `~/.config/herdr-app/agent-profiles/`, runs `herdr-app do ...` and
-  `sh -c 'printf %s "$SHELL"'`, and starts the harness you chose. No network access of its own.
+- What the mod touches: it reads `~/.config/herdr-app/agent-profiles/`, and writes there only when you change a
+  profile in the options menu. It runs `herdr-app do ...`, `sh -c 'printf %s "$SHELL"'`, `open` (macOS) or
+  `xdg-open` (Linux) for the menu's file actions, and the harness you chose. No network access of its own.
 - Replacing an idle shell ends that shell. Only an idle shell with no sub-agents is replaced.
 
 ## Develop
