@@ -9,7 +9,9 @@ in the agent's own folder. The instructions go with it every time.
 - **`ctrl-shift-a`** opens the list. Type to filter.
 - **Enter** starts the agent here: in the focused pane, in that pane's current folder.
 - **Shift+Enter** (or click `in ~/code/app`) starts it in the profile's own folder.
-- The instructions are attached the harness's own way, in both cases. Nothing is pasted as a first message.
+- **In the sidebar**, optional: a "Profiles" list under Herdr's Agents list. Click a profile to start it here;
+  click its folder icon to start it in its own folder.
+- The instructions are attached the harness's own way, in every case. Nothing is pasted as a first message.
 
 The same idea as the native agent profiles in [OhMyHerdr](https://github.com/chengyixu/oh-my-herdr),
 as a mod for the Herdr app.
@@ -34,6 +36,33 @@ it loads. Then add the key. Merge `agent-profiles/keys.json` into your own `~/.c
 ```
 
 The `terminal` entry takes Ctrl+Shift+A away from programs inside a terminal. Pick another key if you need it.
+
+## Show the profiles in the sidebar
+
+The same mod draws a sidebar list when a layout block gives it `"props": { "view": "sidebar" }`. Herdr's own
+layouts are read-only, so add it to a copy of yours:
+
+```sh
+herdr-app do layout.clone '{"name":"main","as":"main-profiles"}'   # copies main and switches to it
+```
+
+Then, in `~/.config/herdr-app/layouts/main-profiles.json`, add this block after `agents` in the
+`sidebar-lists` column:
+
+```json
+{ "id": "profiles", "type": "block", "size": { "weight": 1 }, "min": 90,
+  "content": { "mod": "agent-profiles", "props": { "view": "sidebar" } } }
+```
+
+Herdr's Agents list stays its own, untouched panel and keeps its updates. Your layout copy does not get Herdr's
+future changes to `main`; `cmd-shift-l` switches between layouts, and deleting the file removes the copy.
+
+The list:
+
+- **Click** a profile to start it in the pane you were last in. **Click the folder icon** to start it in the
+  profile's own folder. A profile that cannot start is dimmed; hover it to see why.
+- It follows the profile folder: add, edit or remove a profile and the list updates by itself.
+- It never takes the keyboard from your terminal. On the narrow sidebar rail it shows icons only.
 
 ## Make a profile
 
@@ -113,7 +142,10 @@ and every profile follows:
 ## How it works
 
 ```
-main.js    the dialog; wires Herdr's APIs into core's `host`        (UI, thin)
+main.js    picks the view from the block's props: popup or sidebar
+popup.js   the dialog (opened with a key; reads its target once)
+sidebar.js the sidebar list (reads its target at click time; follows the folder)
+host.js    wires Herdr's APIs into core's `host`: loading, launching
 core.js    parse a profile, resolve its documents, plan the launch,  (pure: imports nothing)
            decide replace or beside, and run the steps in order
 ```
@@ -132,7 +164,7 @@ it answers with what it made or why it could not, and the next step depends on t
 5. `terminal.open` beside the focused pane, in the chosen folder. Then, for an idle shell, `pane.close` on
    the old pane (and `pane.zoom` on the new one if the old was maximized).
 
-Why these choices are in [`docs/adr/0001`](docs/adr/0001-spawn-into-the-current-pane.md).
+Why these choices are in [`docs/adr/`](docs/adr/0001-spawn-into-the-current-pane.md) (0001 the launch, 0002 `include`, 0003 the sidebar).
 
 ## Good to know
 

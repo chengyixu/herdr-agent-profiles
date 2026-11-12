@@ -8,7 +8,8 @@ This file is the brief: enough to build Agent profiles from an empty folder. The
 
 ## What you see
 
-- A popup near the top of the window, 560px wide and 420px high, offset 64px from the top. Nothing is added to the layout itself.
+- A popup near the top of the window, 560px wide and 420px high, offset 64px from the top.
+- Optionally, a "Profiles" block in the sidebar, under Herdr's Agents list, in the person's own copy of their layout (Herdr's layouts are read-only). It matches the Agents list: theme `chrome` background, a 1px `border` line on top, a 41px header "Profiles" (11.5px, medium, `dim`), then 30px rows with 8px rounding: the harness icon (16px), the name (13px; `dim` when it cannot start), and, for a profile with a `cwd`, a 13px folder icon on the right (`dim`, `foreground` on hover). Hovering a row shows "name · harness · documents", or the reason it cannot start. While one starts, its row says "starting…". With no profiles: "No profiles yet. Add a folder per agent in ~/.config/herdr-app/agent-profiles/." On the narrow rail (sidebar under 160px) there is no header and each row is only its centered icon, 26px high.
 - A heading, "Agent profiles" (15px, semibold), with "Esc" on the right in the dim text color.
 - A filter field, 36px high, rounded, with an accent-colored border and the placeholder "Start an agent profile…".
 - One hint line under it (11.5px). Normally dim: "Takes over this idle shell · ~/folder" or "Opens beside this pane · ~/folder". In the blocked color: "This space is on <machine>. Remote spaces are not supported yet." or "Focus a pane first." While a start is running: "Starting <name>…" in the accent color.
@@ -33,9 +34,12 @@ The key (`ctrl-shift-a`) opens the popup with the filter focused. The focused pa
 
 A profile is a folder: `profile.json` with `{"harness": "<program key>", "cwd": "<optional>", "include": ["<optional profile names>"]}` (unknown fields are an error) and a document, `AGENTS.md` or `CLAUDE.md`. The harness's own file name wins if both exist; a blank document counts as none. `include` attaches the named profiles' documents first, in order, so rules shared by several agents have one home; only their documents are used, not their harness or folder, and only one level deep.
 
+In the sidebar block, a click on a row starts the profile in the focused pane at the moment of the click (if the click took focus off the panes, the last pane the block saw focused); a click on the folder icon starts it in the profile's own folder and not also the row's start. A second click while one is starting does nothing. The block reloads the profiles whenever the profile folder changes; without a folder it looks again every 10 seconds. It never takes keyboard focus.
+
 ## Built from
 
-- **One mod**, `mods/agent-profiles/`: `mod.json` (`place: "none"`, a top popup overlay, so no `layouts/` folder), `main.js` (the popup and the wiring), and `core.js` (all the logic, importing nothing, so it runs under Node for tests).
+- **One mod**, `mods/agent-profiles/`: `mod.json` (`place: "none"`, a top popup overlay), `main.js` (picks the view per copy from `props().view`), `popup.js`, `sidebar.js`, `host.js` (Herdr wiring shared by both), `core.js` (all the logic, importing nothing, so it runs under Node for tests) and `folder.svg`. The bundle has no `layouts/` folder: the sidebar block goes into the person's own layout copy as `{ "id": "profiles", "type": "block", "size": { "weight": 1 }, "min": 90, "content": { "mod": "agent-profiles", "props": { "view": "sidebar" } } }`, after `agents` in the `sidebar-lists` column of a `layout.clone` of `main`.
+- The sidebar uses `layout()` (the `sidebar` node's width, for the rail), `focused()` at click time and at each render (the last pane it saw), and `watchFolder` on the profile folder, with `cx.timer.after(10000)` before watching again when that fails.
 - **A `keys.json` snippet** merged into the person's existing keys, never replacing them:
 
   ```json
