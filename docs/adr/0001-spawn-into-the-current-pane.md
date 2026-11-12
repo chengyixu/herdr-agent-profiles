@@ -47,8 +47,8 @@ argv = [$SHELL, "-l", "-i", "-c", '"$@"; exec "$0" -l -i', $SHELL, ...harnessCom
 - **Only an idle shell with no sub-agents is replaced.** `program.shell`, no status, and no live child terminals.
   Anything else gets the agent beside it. Replacing a running program, or a shell that owns background workers,
   would destroy work.
-- **Zoom.** Closing the zoomed pane un-maximizes the tab, so the new pane is zoomed again. Found by a live probe;
-  a unit test and a live check cover it. Splitting beside a zoomed pane un-maximizes, as splits do everywhere in Herdr.
+- **Zoom.** Closing the zoomed pane un-maximizes the tab, so the new pane is zoomed again. Found by a live probe of `panes()`
+  and re-checked there once after the fix; a unit test covers it from now on. Splitting beside a zoomed pane un-maximizes, as splits do everywhere in Herdr.
 
 ## Instructions per harness
 

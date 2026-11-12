@@ -75,7 +75,8 @@ Checked while building (on the versions above):
 - The unit tests (the rules and the order of the steps) and the UI-glue tests (loading, row states, click, Enter, Shift+Enter, failure toast, double-start guard) pass, and each dangerous mutation turns a test red.
 - The wrapper delivers a 20 KB argument with quotes, `$`, backticks, CRLF, DEL, CJK and emoji byte for byte through zsh, bash, sh, dash and ksh.
 - Each harness accepts its flag: Claude answers from the appended file; Pi's assembled system prompt contains it; Codex's model-visible prompt contains it as a developer message. Each is absent without the flag.
-- In a running Herdr, with real Claude, Pi and Codex: an idle shell is replaced by the agent in the same slot; the agent is the foreground process in the requested folder with the document attached; a busy pane is left alone; a start into a folder that does not exist leaves the old pane untouched; a replaced zoomed pane is zoomed again.
+- In a running Herdr, with real Claude, Pi and Codex: an idle shell is replaced by the agent in the same slot; the agent is the foreground process in the requested folder with the document attached; a busy pane is left alone; a start into a folder that does not exist leaves the old pane untouched.
+- In a running Herdr, once, with a stand-in agent (not a recurring script): a replaced maximized pane comes back maximized, and a maximized busy pane is split beside as splits normally are.
 
 Still needs a person with a visible window:
 
