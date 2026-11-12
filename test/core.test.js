@@ -8,6 +8,7 @@ import {
   placement,
   planLaunch,
   problem,
+  resolveIncludes,
   shellArgv,
   startProfile,
   tomlString,
@@ -16,7 +17,8 @@ import {
 const SHELL = "/bin/zsh";
 const WRAP = '"$@"; exec "$0" -l -i';
 const wrapped = (cmd) => [SHELL, "-l", "-i", "-c", WRAP, SHELL, ...cmd];
-const DOC = { path: "/h/agent-profiles/nexora/AGENTS.md", text: "# Role\nBe terse.\n" };
+const DOC = { path: "/h/agent-profiles/nexora/AGENTS.md", text: "# Role\nBe terse.\n", label: "AGENTS.md" };
+const BASE = { path: "/h/agent-profiles/general/AGENTS.md", text: "# Doctrine\n", label: "general" };
 const HOME = "/Users/me";
 const AGENTS = {
   claude: { key: "claude", run: ["claude"], installed: true },
@@ -25,7 +27,7 @@ const AGENTS = {
   gemini: { key: "gemini", run: ["gemini"], installed: true },
   amp: { key: "amp", run: ["amp"], installed: false },
 };
-const profile = (o = {}) => ({ name: "nexora", harness: "claude", cwd: null, doc: DOC, ...o });
+const profile = (o = {}) => ({ name: "nexora", harness: "claude", cwd: null, include: [], docs: [DOC], ...o });
 const plan = (o = {}) =>
   planLaunch({
     profile: profile(),
@@ -41,11 +43,12 @@ const plan = (o = {}) =>
 
 test("parseProfile accepts a harness and an optional cwd", () => {
   assert.deepEqual(parseProfile("nexora", '{"harness":"claude"}'), {
-    profile: { name: "nexora", harness: "claude", cwd: null },
+    profile: { name: "nexora", harness: "claude", cwd: null, include: [] },
   });
   assert.deepEqual(parseProfile("ops_2", '{"harness":"pi","cwd":"~/nexora"}'), {
-    profile: { name: "ops_2", harness: "pi", cwd: "~/nexora" },
+    profile: { name: "ops_2", harness: "pi", cwd: "~/nexora", include: [] },
   });
+  assert.deepEqual(parseProfile("klik", '{"harness":"pi","include":["general","base-2"]}').profile.include, ["general", "base-2"]);
   assert.deepEqual(parseProfile("a", '{"harness":"codex","cwd":"/srv/app"}').profile.cwd, "/srv/app");
 });
 
@@ -68,10 +71,68 @@ test("parseProfile rejects bad content with a reason that names the problem", ()
   assert.match(parseProfile("a", '{"harness":"pi","cwd":"~bob/x"}').error, /cwd/);
 });
 
+test("parseProfile rejects a bad include list", () => {
+  for (const [include, why] of [
+    ['"general"', /list of profile names/],
+    ["[7]", /list of profile names/],
+    ['["General"]', /not a profile name/],
+    ['["a"]', /cannot include itself/],
+    ['["general","general"]', /more than once/],
+  ]) {
+    assert.match(parseProfile("a", `{"harness":"pi","include":${include}}`).error, why, include);
+  }
+});
+
 test("parseProfile refuses unknown fields instead of silently ignoring a typo", () => {
   const r = parseProfile("a", '{"harness":"pi","native_cwd":"/x"}');
   assert.match(r.error, /unknown field/);
   assert.match(r.error, /native_cwd/);
+});
+
+// ---- resolveIncludes ----------------------------------------------------------
+
+// What main.js loads from disk: a parsed profile with its own document, or { name, error }.
+const loaded = (name, o = {}) => ({ name, harness: "pi", cwd: null, include: [], doc: null, ...o });
+const broken = (name, error) => ({ name, error });
+const own = (name, text = `# ${name}\n`) => ({ path: `/h/agent-profiles/${name}/AGENTS.md`, text });
+
+test("resolveIncludes puts included documents first, labelled with the profile they come from", () => {
+  const [general, klik] = resolveIncludes([
+    loaded("general", { doc: own("general") }),
+    loaded("klik", { include: ["general"], doc: own("klik") }),
+  ]);
+  assert.deepEqual(general.docs, [{ ...own("general"), label: "AGENTS.md" }]);
+  assert.deepEqual(klik.docs, [{ ...own("general"), label: "general" }, { ...own("klik"), label: "AGENTS.md" }]);
+});
+
+test("resolveIncludes: a profile may have no document of its own when it includes one", () => {
+  const [, panor] = resolveIncludes([loaded("general", { doc: own("general") }), loaded("panor", { include: ["general"] })]);
+  assert.deepEqual(panor.docs.map((d) => d.label), ["general"]);
+  assert.equal(panor.error, undefined);
+});
+
+test("resolveIncludes: a blank document counts as none", () => {
+  const [p] = resolveIncludes([loaded("p", { doc: own("p", " \n\t") })]);
+  assert.deepEqual(p.docs, []);
+});
+
+test("resolveIncludes refuses an include that cannot be honoured, and says why", () => {
+  const out = resolveIncludes([
+    broken("broken", "profile.json is not valid JSON"),
+    loaded("empty"),
+    loaded("layered", { include: ["empty"], doc: own("layered") }),
+    loaded("a", { include: ["nowhere"] }),
+    loaded("b", { include: ["broken"] }),
+    loaded("c", { include: ["empty"] }),
+    loaded("d", { include: ["layered"] }),
+  ]);
+  const why = Object.fromEntries(out.map((p) => [p.name, p.error]));
+  assert.equal(why.broken, "profile.json is not valid JSON", "a broken profile keeps its own error");
+  assert.match(why.a, /includes "nowhere", which is not a profile/);
+  assert.match(why.b, /includes "broken", which cannot be used: profile\.json is not valid JSON/);
+  assert.match(why.c, /includes "empty", which has no instructions/);
+  assert.match(why.d, /includes "layered", which includes others/);
+  for (const p of out.filter((p) => p.error)) assert.equal(p.docs, undefined, `${p.name} must not be startable`);
 });
 
 // ---- expandHome / pickDoc ----------------------------------------------------
@@ -133,9 +194,9 @@ test("placement replaces only an idle shell with nothing under it", () => {
 
 // ---- planLaunch --------------------------------------------------------------
 
-test("planLaunch: Claude takes the document as an append-system-prompt file", () => {
+test("planLaunch: Claude takes the text inline, attached with = so a leading dash cannot read as a flag", () => {
   assert.deepEqual(plan(), {
-    argv: wrapped(["claude", "--append-system-prompt-file", DOC.path]),
+    argv: wrapped(["claude", `--append-system-prompt=${DOC.text}`]),
     folder: "/work/repo",
   });
 });
@@ -148,6 +209,23 @@ test("planLaunch: Pi takes the document as an append-system-prompt path", () => 
 test("planLaunch: Codex takes the text as additive developer_instructions", () => {
   const r = plan({ profile: profile({ harness: "codex" }), agent: AGENTS.codex });
   assert.deepEqual(r.argv, wrapped(["codex", "--no-daemon", "-c", 'developer_instructions="# Role\\nBe terse.\\n"']));
+});
+
+test("planLaunch attaches every document, included ones first", () => {
+  const two = [BASE, DOC];
+  assert.deepEqual(
+    plan({ profile: profile({ docs: two }) }).argv.slice(6),
+    // One value: Claude Code keeps only the last of a repeated --append-system-prompt(-file).
+    ["claude", `--append-system-prompt=${BASE.text}\n\n${DOC.text}`],
+  );
+  assert.deepEqual(
+    plan({ profile: profile({ harness: "pi", docs: two }), agent: AGENTS.pi }).argv.slice(6),
+    ["pi", "--append-system-prompt", BASE.path, "--append-system-prompt", DOC.path],
+  );
+  // Codex takes one developer_instructions value: the texts in order, a blank line between.
+  const codex = plan({ profile: profile({ harness: "codex", docs: two }), agent: AGENTS.codex }).argv.slice(6);
+  assert.deepEqual(codex.slice(0, 3), ["codex", "--no-daemon", "-c"]);
+  assert.equal(JSON.parse(codex[3].slice("developer_instructions=".length)), "# Doctrine\n\n\n# Role\nBe terse.\n");
 });
 
 test("planLaunch: the harness command is Herdr's own `run`, so programs.json overrides apply", () => {
@@ -168,9 +246,8 @@ test("planLaunch: the document is attached in both folder modes", () => {
   assert.deepEqual(own.argv, here.argv);
 });
 
-test("planLaunch: no document, or a blank one, launches the bare harness", () => {
-  assert.deepEqual(plan({ profile: profile({ doc: null }) }).argv, wrapped(["claude"]));
-  assert.deepEqual(plan({ profile: profile({ doc: { path: DOC.path, text: " \n\t" } }) }).argv, wrapped(["claude"]));
+test("planLaunch: no document launches the bare harness", () => {
+  assert.deepEqual(plan({ profile: profile({ docs: [] }) }).argv, wrapped(["claude"]));
 });
 
 test("planLaunch: a harness without a verified adapter fails loudly instead of dropping the document", () => {
@@ -178,20 +255,20 @@ test("planLaunch: a harness without a verified adapter fails loudly instead of d
   assert.match(r.error, /gemini/);
   assert.match(r.error, /claude, codex, pi/);
   // ...but it can still be launched when there is nothing to attach.
-  const bare = plan({ profile: profile({ harness: "gemini", doc: null }), agent: AGENTS.gemini });
+  const bare = plan({ profile: profile({ harness: "gemini", docs: [] }), agent: AGENTS.gemini });
   assert.deepEqual(bare.argv, wrapped(["gemini"]));
 });
 
 test("planLaunch reports unusable input as an error", () => {
   assert.match(plan({ mode: "own" }).error, /cwd/);
   assert.match(plan({ agent: null }).error, /unknown harness/);
-  assert.match(plan({ agent: AGENTS.amp, profile: profile({ harness: "amp", doc: null }) }).error, /not installed/);
+  assert.match(plan({ agent: AGENTS.amp, profile: profile({ harness: "amp", docs: [] }) }).error, /not installed/);
   assert.match(plan({ shell: "/usr/bin/fish" }).error, /supported/i);
 });
 
 test("problem is the one rule the list and the launcher share", () => {
   assert.equal(problem(profile(), AGENTS.claude), null);
-  assert.equal(problem(profile({ doc: null, harness: "gemini" }), AGENTS.gemini), null);
+  assert.equal(problem(profile({ docs: [], harness: "gemini" }), AGENTS.gemini), null);
   assert.equal(problem(profile({ error: "harness is missing" }), null), "harness is missing");
   assert.match(problem(profile(), null), /unknown harness/);
   assert.match(problem(profile({ harness: "amp" }), AGENTS.amp), /not installed/);
@@ -230,7 +307,7 @@ test("startProfile replaces an idle shell: create first, close second", async ()
   assert.deepEqual(names(host), ["pane.focus", "terminal.open", "pane.close"]);
   assert.deepEqual(host.calls[0][1], { pane: "pOLD" });
   assert.deepEqual(host.calls[1][1], {
-    argv: wrapped(["claude", "--append-system-prompt-file", DOC.path]),
+    argv: wrapped(["claude", `--append-system-prompt=${DOC.text}`]),
     folder: "/work/repo",
     place: "right",
   });
@@ -314,11 +391,11 @@ test("startProfile refuses before touching anything", async () => {
     /harness is missing/,
   );
   await refuse(
-    { profile: profile({ harness: "amp", doc: null }), mode: "here", target: { machine: null, pane: IDLE } },
+    { profile: profile({ harness: "amp", docs: [] }), mode: "here", target: { machine: null, pane: IDLE } },
     /not installed/,
   );
   await refuse(
-    { profile: profile({ harness: "nope", doc: null }), mode: "here", target: { machine: null, pane: IDLE } },
+    { profile: profile({ harness: "nope", docs: [] }), mode: "here", target: { machine: null, pane: IDLE } },
     /unknown harness/,
   );
   await refuse({ profile: profile(), mode: "own", target: { machine: null, pane: IDLE } }, /cwd/);

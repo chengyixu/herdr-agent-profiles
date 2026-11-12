@@ -52,6 +52,8 @@ const cwd = join(work, "cwd");
 mkdirSync(profileDir);
 mkdirSync(cwd);
 const TEXT = '# E2E\nYou are "E2E" — it\'s a test. $HOME `id`\n中文 🦉\n';
+const BASE = { path: join(work, "base.md"), text: "- Included first: a bullet, so it starts with a dash.\n", label: "e2e-base" };
+writeFileSync(BASE.path, BASE.text);
 
 const host = {
   home: homedir(),
@@ -92,14 +94,17 @@ async function freshShellPane(name) {
   return { tab: made.tab, pane: { pane: found.pane, terminal: made.terminal, cwd, status: null, program: { shell: true } } };
 }
 
-// The attach arguments each harness must have been launched with (literal on purpose:
-// this must not be derived from the table under test).
-function attached(harness, argv, doc) {
-  const i = (flag) => argv.indexOf(flag);
-  if (harness === "claude") return i("--append-system-prompt-file") >= 0 && argv[i("--append-system-prompt-file") + 1] === doc.path;
-  if (harness === "pi") return i("--append-system-prompt") >= 0 && argv[i("--append-system-prompt") + 1] === doc.path;
+// The attach arguments each harness must have been launched with, for documents in order
+// (literal on purpose: this must not be derived from the table under test).
+function attached(harness, argv, docs) {
+  const text = docs.map((d) => d.text).join("\n\n");
+  if (harness === "claude") return argv.filter((a) => a.startsWith("--append-system-prompt")).join("|") === `--append-system-prompt=${text}`;
+  if (harness === "pi") {
+    const paths = argv.flatMap((a, k) => (a === "--append-system-prompt" ? [argv[k + 1]] : []));
+    return JSON.stringify(paths) === JSON.stringify(docs.map((d) => d.path));
+  }
   const arg = argv.find((a) => a.startsWith("developer_instructions="));
-  return argv[i("-c")] === "-c" && arg !== undefined && JSON.parse(arg.slice("developer_instructions=".length)) === doc.text;
+  return argv[argv.indexOf("-c")] === "-c" && arg !== undefined && JSON.parse(arg.slice("developer_instructions=".length)) === text;
 }
 
 try {
@@ -110,9 +115,11 @@ try {
       console.log(`- ${harness}: not installed, skipped`);
       continue;
     }
-    const doc = { path: join(profileDir, harness === "claude" ? "CLAUDE.md" : "AGENTS.md"), text: TEXT };
+    const doc = { path: join(profileDir, harness === "claude" ? "CLAUDE.md" : "AGENTS.md"), text: TEXT, label: "AGENTS.md" };
     writeFileSync(doc.path, TEXT);
-    const profile = { name: `e2e-${harness}`, harness, cwd, doc };
+    // Every harness starts layered: an included document first, then its own.
+    const docs = [BASE, doc];
+    const profile = { name: `e2e-${harness}`, harness, cwd, include: ["e2e-base"], docs };
 
     // 1. an idle shell is replaced in place by the agent
     const { tab, pane } = await freshShellPane(`replace-${harness}`);
@@ -123,7 +130,7 @@ try {
 
     // 2. Herdr launched the agent with the instructions, in the folder asked for
     const launched = info(started.terminal);
-    ok(Boolean(launched) && attached(harness, launched.argv, doc), `${harness}: launched with the instruction document attached`);
+    ok(Boolean(launched) && attached(harness, launched.argv, docs), `${harness}: launched with both documents attached, the included one first`);
     const fg = await waitFor(() => {
       const f = info(started.terminal)?.foreground;
       return f && f.name !== "zsh" && f.name !== "bash" ? f : null;
@@ -135,7 +142,7 @@ try {
     if (harness === "pi") {
       const second = await freshShellPane("own-folder");
       const own = await startProfile(host, { profile: { ...profile, cwd: work }, mode: "own", target: { machine: null, pane: second.pane } });
-      ok(attached(harness, info(own.terminal).argv, doc), "pi: the document is attached in the profile's own folder too");
+      ok(attached(harness, info(own.terminal).argv, docs), "pi: the document is attached in the profile's own folder too");
       ok(info(own.terminal).cwd === work, "pi: ...and it started there");
       kill(own.terminal);
     }
@@ -154,7 +161,7 @@ try {
 
   // 5. a start that cannot be created leaves the old pane alone
   const { tab, pane } = await freshShellPane("failure");
-  const bad = { name: "e2e-bad", harness: "pi", cwd: "/definitely/not/a/folder", doc: null };
+  const bad = { name: "e2e-bad", harness: "pi", cwd: "/definitely/not/a/folder", include: [], docs: [] };
   let error = null;
   try {
     await startProfile(host, { profile: bad, mode: "own", target: { machine: null, pane } });

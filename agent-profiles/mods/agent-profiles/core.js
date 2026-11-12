@@ -2,21 +2,26 @@
 // mod runtime and under Node, so the destructive path (replace a pane) is unit tested.
 //
 // A profile is a folder in ~/.config/herdr-app/agent-profiles/<name>/:
-//   profile.json   { "harness": "claude", "cwd": "~/code/app" }   (cwd is optional)
+//   profile.json   { "harness": "claude", "cwd": "~/code/app", "include": ["general"] }
+//                  (cwd and include are optional)
 //   AGENTS.md      the persistent instructions (CLAUDE.md works too)
+// `include` attaches other profiles' documents first, so a shared document has one home.
 
 export const NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/;
-const FIELDS = ["harness", "cwd"];
+const FIELDS = ["harness", "cwd", "include"];
 const POSIX_SHELLS = ["zsh", "bash", "sh", "dash", "ksh"];
 
 // How each harness takes a persistent instruction document. This table is the one
 // home for the flag names; scripts/verify-harnesses.mjs proves it against the real CLIs.
-//   path: the harness reads the file itself.
-//   text: the document is passed inline (Codex has no additive file flag).
+// Each takes every document of a profile, in order:
+//   path: the harness reads the files itself; its flag repeats once per file (pi keeps them all).
+//   text: the documents are passed inline as one value. Claude Code keeps only the LAST of a
+//         repeated --append-system-prompt(-file), and Codex has no additive file option.
+//         "=" attaches the value, so a document that starts with "-" cannot read as a flag.
 export const ADAPTERS = {
-  claude: { path: (file) => ["--append-system-prompt-file", file] },
-  pi: { path: (file) => ["--append-system-prompt", file] },
-  codex: { text: (text) => ["-c", `developer_instructions=${tomlString(text)}`] },
+  claude: { text: (texts) => [`--append-system-prompt=${texts.join("\n\n")}`] },
+  pi: { path: (files) => files.flatMap((file) => ["--append-system-prompt", file]) },
+  codex: { text: (texts) => ["-c", `developer_instructions=${tomlString(texts.join("\n\n"))}`] },
 };
 
 const adapterNames = () => Object.keys(ADAPTERS).sort().join(", ");
@@ -46,7 +51,47 @@ export function parseProfile(name, jsonText) {
     }
     cwd = raw.cwd;
   }
-  return { profile: { name, harness: raw.harness.trim(), cwd } };
+  const include = raw.include ?? [];
+  if (!Array.isArray(include) || include.some((n) => typeof n !== "string")) {
+    return { error: '"include" must be a list of profile names, for example ["general"]' };
+  }
+  const bad = include.find((n) => !NAME_RE.test(n));
+  if (bad !== undefined) return { error: `"include": "${bad}" is not a profile name` };
+  if (include.includes(name)) return { error: `"include": a profile cannot include itself` };
+  if (new Set(include).size !== include.length) return { error: '"include" names a profile more than once' };
+  return { profile: { name, harness: raw.harness.trim(), cwd, include } };
+}
+
+// A blank document is no document: there is nothing to attach.
+const usable = (doc) => Boolean(doc && doc.text.trim());
+
+// Loaded profiles ({ ..., include, doc } or { name, error }) -> each with `docs`, the documents
+// to attach in order: included profiles' first (labelled with the profile's name), then its own
+// (labelled with its file name). One level: an included profile may not include others, so a
+// profile's text never changes because of a profile it does not name.
+export function resolveIncludes(profiles) {
+  const byName = new Map(profiles.map((p) => [p.name, p]));
+  return profiles.map((p) => {
+    if (p.error) return p;
+    const docs = [];
+    for (const name of p.include) {
+      const target = byName.get(name);
+      const why = !target
+        ? "which is not a profile"
+        : target.error
+          ? `which cannot be used: ${target.error}`
+          : target.include.length
+            ? "which includes others (only one level is allowed)"
+            : !usable(target.doc)
+              ? "which has no instructions"
+              : null;
+      if (why) return { name: p.name, error: `includes "${name}", ${why}` };
+      docs.push({ ...target.doc, label: name });
+    }
+    if (usable(p.doc)) docs.push({ ...p.doc, label: p.doc.path.split("/").pop() });
+    const { doc: _own, ...rest } = p;
+    return { ...rest, docs };
+  });
 }
 
 export function expandHome(path, home) {
@@ -86,16 +131,13 @@ export function placement({ pane, hasChildren }) {
   return idleShell && !hasChildren ? "replace" : "beside";
 }
 
-// A blank document is no document: there is nothing to attach.
-const usableDoc = (profile) => (profile.doc && profile.doc.text.trim() ? profile.doc : null);
-
 // Why this profile cannot start (null when it can). The list greys a row out with this
 // text, and planLaunch refuses with it, so the two can never disagree.
 export function problem(profile, agent) {
   if (profile.error) return profile.error;
   if (!agent) return `unknown harness "${profile.harness}"`;
   if (!agent.installed) return `${profile.harness} is not installed`;
-  if (usableDoc(profile) && !ADAPTERS[profile.harness]) {
+  if (profile.docs.length && !ADAPTERS[profile.harness]) {
     return `${profile.harness} cannot take instructions yet (supported: ${adapterNames()})`;
   }
   return null;
@@ -106,9 +148,9 @@ export function planLaunch({ profile, mode, agent, shell, here, home }) {
   if (blocked) return { error: blocked };
   if (mode === "own" && !profile.cwd) return { error: `${profile.name} has no "cwd" in profile.json` };
 
-  const doc = usableDoc(profile);
+  const { docs } = profile;
   const adapter = ADAPTERS[profile.harness];
-  const attach = doc ? (adapter.path ? adapter.path(doc.path) : adapter.text(doc.text)) : [];
+  const attach = !docs.length ? [] : adapter.path ? adapter.path(docs.map((d) => d.path)) : adapter.text(docs.map((d) => d.text));
 
   let argv;
   try {

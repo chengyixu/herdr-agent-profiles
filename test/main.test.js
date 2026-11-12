@@ -33,6 +33,8 @@ before(() => {
   profile("ghost", { "profile.json": '{"harness":"gemini"}', "AGENTS.md": "# Ghost\n" });
   profile("amp", { "profile.json": '{"harness":"amp"}' });
   profile("empty", {});
+  profile("stack", { "profile.json": '{"harness":"claude","include":["reviewer"]}', "CLAUDE.md": "# Stack\n" });
+  profile("wobbly", { "profile.json": '{"harness":"pi","include":["nowhere"]}' });
   profile(".hidden", { "profile.json": '{"harness":"pi"}' });
   writeFileSync(join(root, "agent-profiles", "README.txt"), "not a profile");
 });
@@ -102,9 +104,11 @@ test("the list shows every profile folder, and says why a broken one cannot star
   assert.match(text, /ghost[\s\S]*gemini cannot take instructions yet/);
   assert.match(text, /amp[\s\S]*amp is not installed/);
   assert.match(text, /empty[\s\S]*profile\.json is missing/);
+  assert.match(text, /stack[\s\S]*Claude Code · reviewer \+ CLAUDE\.md/);
+  assert.match(text, /wobbly[\s\S]*includes "nowhere", which is not a profile/);
   assert.doesNotMatch(text, /hidden|README/);
   // Alphabetical, and only the profiles that can start are selectable.
-  const order = ["amp", "empty", "ghost", "ops", "reviewer", "typo"].map((n) => text.indexOf(n));
+  const order = ["amp", "empty", "ghost", "ops", "reviewer", "stack", "typo", "wobbly"].map((n) => text.indexOf(n));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
 
@@ -139,9 +143,17 @@ test("clicking a row starts it where you are: replace the shell, with the docume
   assert.equal(open_.folder, "/work");
   assert.equal(open_.place, "right");
   assert.deepEqual(open_.argv.slice(0, 6), ["/bin/zsh", "-l", "-i", "-c", '"$@"; exec "$0" -l -i', "/bin/zsh"]);
-  assert.deepEqual(open_.argv.slice(6), ["claude", "--append-system-prompt-file", join(root, "agent-profiles", "reviewer", "CLAUDE.md")]);
+  assert.deepEqual(open_.argv.slice(6), ["claude", "--append-system-prompt=# Reviewer\nBe terse.\n"]);
   assert.deepEqual(env.closed, ["ov1"]);
   assert.deepEqual(env.notified, []);
+});
+
+test("a profile that includes another starts with both documents, the included one first", async () => {
+  const { env, tree, cx, settle } = await open();
+  find(tree(), "ap-stack").$on.on_click({}, cx);
+  await settle();
+  const open_ = env.commands.find(([n]) => n === "terminal.open")[1];
+  assert.deepEqual(open_.argv.slice(6), ["claude", "--append-system-prompt=# Reviewer\nBe terse.\n\n\n# Stack\n"]);
 });
 
 test("the folder chip starts it in the profile's own folder, with the same document", async () => {
@@ -170,7 +182,7 @@ test("Enter starts here, Shift+Enter in the profile folder, on the first startab
 
 test("a profile that cannot start is not startable by click or Enter", async () => {
   const { env, tree, view, cx, settle } = await open();
-  for (const id of ["ap-typo", "ap-ghost", "ap-amp", "ap-empty"]) assert.equal(find(tree(), id).$on.on_click, undefined, id);
+  for (const id of ["ap-typo", "ap-ghost", "ap-amp", "ap-empty", "ap-wobbly"]) assert.equal(find(tree(), id).$on.on_click, undefined, id);
   view.filter = "typo";
   view.input.handlers.submit({}, cx);
   await settle();
@@ -218,9 +230,11 @@ test("arrow keys move the selection and keep it in view; Escape closes", async (
   press("down");
   assert.equal(view.at, 1);
   press("down");
-  assert.equal(view.at, 0, "wraps around the two startable profiles");
+  assert.equal(view.at, 2);
+  press("down");
+  assert.equal(view.at, 0, "wraps around the three startable profiles");
   press("up");
-  assert.equal(view.at, 1);
+  assert.equal(view.at, 2);
   assert.ok(view.scroll.scrolled.length >= 3, "scrolled the selected row into view each time");
   press("escape");
   assert.deepEqual(env.closed, ["ov1"]);

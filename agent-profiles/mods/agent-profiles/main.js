@@ -5,7 +5,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input, ScrollHandle } from "gpui-base";
 import * as fs from "fs/promises";
 import { appHome, closeOverlay, exec, focused, home, knownAgents, notify, panes, props, spaces, terminals, theme } from "herdr";
-import { parseProfile, pickDoc, placement, problem, startProfile } from "./core.js";
+import { parseProfile, pickDoc, placement, problem, resolveIncludes, startProfile } from "./core.js";
 
 // The popup is as tall as its content, so the list needs a height of its own: a list that
 // only flexes into "the rest" collapses to nothing (seen on screen).
@@ -15,7 +15,7 @@ const VISIBLE_ROWS = 8;
 const profilesDir = () => `${appHome()}/agent-profiles`;
 const tilde = (path) => (path && path.startsWith(home()) ? `~${path.slice(home().length)}` : (path ?? ""));
 
-// One entry per folder: a profile with its document read, or { name, error } to show why not.
+// One entry per folder: a profile with the documents it attaches, or { name, error } to show why not.
 async function loadProfiles() {
   let entries;
   try {
@@ -24,7 +24,7 @@ async function loadProfiles() {
     return []; // no folder yet: the empty state explains how to make one
   }
   const names = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name).sort();
-  return Promise.all(names.map(loadProfile));
+  return resolveIncludes(await Promise.all(names.map(loadProfile)));
 }
 
 async function loadProfile(name) {
@@ -157,7 +157,7 @@ export default class AgentProfiles extends View {
         ? svg(agent.icon).size(15).flex_none().text_color(why ? t.dim : t.foreground)
         : image(agent.icon).size(15).flex_none()
       : div().w(15).flex_none();
-    const doc = p.doc ? p.doc.path.split("/").pop() : "no instructions";
+    const doc = p.docs?.length ? p.docs.map((d) => d.label).join(" + ") : "no instructions";
     return h_flex()
       .id(`ap-${p.name}`)
       .h(ROW_HEIGHT)
