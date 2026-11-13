@@ -1,7 +1,7 @@
 import { div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input, ScrollHandle } from "gpui-base";
 import { closeOverlay, knownAgents, notify, props, theme } from "herdr";
-import { placement, rowsFor, startProfile } from "./core.js";
+import { placement, rowsFor, startProfile, summary } from "./core.js";
 import { currentTarget, loadProfiles, makeHost, profilesDir, tilde } from "./host.js";
 
 // The popup is as tall as its content, so the list needs a height of its own: a list that
@@ -84,7 +84,6 @@ export class Popup {
         ? svg(agent.icon).size(15).flex_none().text_color(why ? t.dim : t.foreground)
         : image(agent.icon).size(15).flex_none()
       : div().w(15).flex_none();
-    const doc = p.docs?.length ? p.docs.map((d) => d.label).join(" + ") : "no instructions";
     return h_flex()
       .id(`ap-${p.name}`)
       .h(ROW_HEIGHT)
@@ -97,7 +96,7 @@ export class Popup {
       .when(!why, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.choose(r, "here", cx)))
       .child(icon)
       .child(div().flex_none().font_semibold().text_color(why ? t.dim : t.foreground).child(p.name))
-      .child(div().flex_1().truncate().text_size(11.5).text_color(why ? t.blocked : t.dim).child(why ?? `${agent?.name ?? p.harness} · ${doc}`))
+      .child(div().flex_1().truncate().text_size(11.5).text_color(why ? t.blocked : t.dim).child(why ?? summary(p, agent)))
       .when(!why && p.cwd, (el) =>
         el.child(
           h_flex()

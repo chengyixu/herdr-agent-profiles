@@ -4,9 +4,9 @@
 import { div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { focused, knownAgents, layout, notify, openOverlay, theme, watchFolder } from "herdr";
-import { rowsFor, startProfile } from "./core.js";
+import { rowsFor, startProfile, summary } from "./core.js";
 import { currentTarget, loadProfiles, makeHost, profilesDir, tilde } from "./host.js";
-import { menuHeight, menuItems, menuState } from "./menu.js";
+import { menuSize, menuState } from "./menu.js";
 
 const MENU_WIDTH = 300;
 // Option-click opens the menu too; Control-click is the Mac's right-click.
@@ -80,7 +80,7 @@ export class Sidebar {
     const pane = focused()?.pane ?? this.lastPane;
     cx.spawn(async () => {
       const state = await menuState(p.name);
-      openOverlay({ mod: "agent-profiles", kind: "popup", width: MENU_WIDTH, height: menuHeight(menuItems(state)), props: { view: "menu", profile: p.name, pane } });
+      openOverlay({ mod: "agent-profiles", kind: "popup", width: MENU_WIDTH, height: menuSize(state), props: { view: "menu", profile: p.name, pane } });
     });
   }
 
@@ -90,8 +90,7 @@ export class Sidebar {
   }
 
   row(t, { p, agent, why }, rail) {
-    const docs = p.docs?.length ? p.docs.map((d) => d.label).join(" + ") : "no instructions";
-    const tip = `${why ? `${p.name}: ${why}` : `${p.name} · ${agent?.name ?? p.harness} · ${docs}`} (right-click for options)`;
+    const tip = `${why ? `${p.name}: ${why}` : `${p.name} · ${summary(p, agent)}`} (right-click for options)`;
     const base = h_flex()
       .id(`ap-side-${p.name}`)
       .flex_none()

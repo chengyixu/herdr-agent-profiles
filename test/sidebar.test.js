@@ -11,6 +11,7 @@ import { join } from "node:path";
 register("./stub-loader.mjs", import.meta.url);
 const { find, textOf, walk } = await import("./stubs/gpui-kit.mjs");
 const { default: AgentProfiles } = await import("../agent-profiles/mods/agent-profiles/main.js");
+const { menuSize, menuState } = await import("../agent-profiles/mods/agent-profiles/menu.js");
 
 const AGENTS = [
   { key: "claude", name: "Claude Code", run: ["claude"], installed: true, icon: "icons/claude.svg", tint: false },
@@ -27,6 +28,7 @@ before(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "ap-side-")));
   profile("general", { "profile.json": '{"harness":"pi"}', "AGENTS.md": "# Shared\n" });
   profile("klik-agent", { "profile.json": '{"harness":"claude","cwd":"~/Klik","include":["general"]}', "CLAUDE.md": "# Klik\n" });
+  profile("risky-ok", { "profile.json": '{"harness":"pi","bypass":true}', "AGENTS.md": "# R\n" });
   profile("broken", { "profile.json": '{"harness":"pi","include":["nowhere"]}' });
 });
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -103,6 +105,7 @@ test("the sidebar shows a Profiles header and one row per profile", async () => 
   assert.ok(find(tree(), "ap-side-general").$on.on_click, "a startable row is clickable");
   assert.match(find(tree(), "ap-side-broken").$tip, /includes "nowhere", which is not a profile/);
   assert.match(find(tree(), "ap-side-klik-agent").$tip, /Claude Code · general \+ CLAUDE\.md/);
+  assert.match(find(tree(), "ap-side-risky-ok").$tip, /Pi · AGENTS\.md · bypass/);
 });
 
 test("a plain click on a row that cannot start starts nothing", async () => {
@@ -123,7 +126,7 @@ test("right-click opens the options menu for that profile, at the pointer, and s
     assert.equal(spec.mod, "agent-profiles");
     assert.equal(spec.kind, "popup");
     assert.deepEqual(spec.props, { view: "menu", profile: name, pane: "pA" });
-    assert.ok(spec.height > 100, "sized for its rows");
+    assert.equal(spec.height, menuSize(await menuState(name)), "sized for the taller of its pages");
   }
   assert.deepEqual(env.commands, []);
 });

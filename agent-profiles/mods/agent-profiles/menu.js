@@ -6,7 +6,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import * as fs from "fs/promises";
 import { closeOverlay, exec, home, knownAgents, notify, pickFolder, props, theme, window, writeTextFile } from "herdr";
-import { ADAPTERS, editProfile, homeRelative, includeChoices, newDocName, parseProfile, pickDoc, rowsFor, startProfile } from "./core.js";
+import { HARNESSES, editProfile, homeRelative, includeChoices, newDocName, parseProfile, pickDoc, rowsFor, startProfile, summary } from "./core.js";
 import { currentTarget, loadProfiles, makeHost, profilesDir } from "./host.js";
 
 const H = { header: 50, row: 28, section: 24, note: 28, divider: 11, padding: 10 };
@@ -37,30 +37,48 @@ export async function menuState(name) {
   return { name, dir, profiles, agents, files, raw };
 }
 
+// What a harness can do, as the harness page says it.
+function abilities(key) {
+  const h = HARNESSES[key];
+  if (!h) return "";
+  return h.instructions && h.bypass ? "instructions · bypass" : h.instructions ? "instructions" : "bypass only";
+}
+
 // The menu as data, so its height is known before it opens: the sidebar sizes the popup with it.
-export function menuItems(state) {
+// Two pages: "main", and "harness" (the list of harnesses, too long to sit in the main page).
+export function menuItems(state, page = "main") {
   const { name, profiles, agents, files, raw } = state;
   const row = rowsFor(profiles, agents).find((r) => r.p.name === name);
   const why = row ? row.why : "this profile is gone";
   const settings = raw.profile ?? null;
-  const docs = row?.p.docs?.length ? row.p.docs.map((d) => d.label).join(" + ") : "no instructions";
-  const out = [{ kind: "header", label: name, hint: why ?? `${row.agent?.name ?? row.p.harness} · ${docs}`, bad: Boolean(why) }];
+  const out = [{ kind: "header", label: name, hint: why ?? summary(row.p, row.agent), bad: Boolean(why) }];
+  if (page === "harness" && settings) {
+    out.push({ kind: "row", id: "ap-m-back", label: "‹ Back", enabled: true, act: { type: "page", page: "main" } });
+    out.push({ kind: "divider" }, { kind: "section", label: "Harness" });
+    // The harnesses in the table that are installed: only those were checked for how to pass
+    // instructions and bypass. profile.json can still name any other; it is listed while chosen.
+    const offered = agents.filter((a) => a.installed && HARNESSES[a.key]);
+    if (!offered.some((a) => a.key === settings.harness)) {
+      const known = agents.find((a) => a.key === settings.harness);
+      offered.push({ key: settings.harness, name: known?.installed ? known.name : `${settings.harness} (not installed)` });
+    }
+    for (const a of offered) {
+      out.push({ kind: "row", id: `ap-m-harness-${a.key}`, label: a.name, hint: abilities(a.key), check: a.key === settings.harness, enabled: true, act: { type: "change", change: { harness: a.key }, then: "main" } });
+    }
+    return out;
+  }
   const cwd = settings?.cwd ?? null;
   out.push({ kind: "row", id: "ap-m-here", label: "Start here", enabled: !why, act: { type: "start", mode: "here" } });
   out.push({ kind: "row", id: "ap-m-own", label: cwd ? `Start in ${cwd}` : "Start in its folder", enabled: !why && Boolean(cwd), act: { type: "start", mode: "own" } });
 
   if (settings) {
     out.push({ kind: "divider" }, { kind: "section", label: "Harness" });
-    // Only harnesses that can take instructions: a profile is for instructions, and the list stays
-    // short however many agents are installed. profile.json can still name any other.
-    const offered = agents.filter((a) => a.installed && ADAPTERS[a.key]);
-    if (!offered.some((a) => a.key === settings.harness)) {
-      const known = agents.find((a) => a.key === settings.harness);
-      offered.push({ key: settings.harness, name: known?.installed ? known.name : `${settings.harness} (not installed)` });
-    }
-    for (const a of offered) {
-      out.push({ kind: "row", id: `ap-m-harness-${a.key}`, label: a.name, check: a.key === settings.harness, enabled: true, act: { type: "change", change: { harness: a.key } } });
-    }
+    const harnessName = agents.find((a) => a.key === settings.harness)?.name ?? settings.harness;
+    out.push({ kind: "row", id: "ap-m-harness", label: `Harness: ${harnessName}`, hint: "change…", enabled: true, act: { type: "page", page: "harness" } });
+    // Bypass: the harness's own skip-all-approvals flag. It can always be turned off, and turned on
+    // only where the table has a checked flag.
+    const flags = HARNESSES[settings.harness]?.bypass;
+    out.push({ kind: "row", id: "ap-m-bypass", label: "Bypass permissions", hint: flags ? flags.join(" ") : `not available for ${harnessName}`, check: settings.bypass, enabled: Boolean(flags) || settings.bypass, act: { type: "change", change: { bypass: !settings.bypass } } });
 
     out.push({ kind: "divider" }, { kind: "section", label: "Folder" });
     out.push({ kind: "row", id: "ap-m-folder", label: cwd ?? "Choose a folder…", hint: cwd ? "change…" : "", check: Boolean(cwd), enabled: true, act: { type: "folder" } });
@@ -89,6 +107,8 @@ export function menuItems(state) {
 }
 
 export const menuHeight = (items) => H.padding + items.reduce((sum, item) => sum + H[item.kind], 0);
+// The popup's height is fixed when it opens, so it fits the taller page.
+export const menuSize = (state) => Math.max(menuHeight(menuItems(state, "main")), menuHeight(menuItems(state, "harness")));
 
 export class Menu {
   constructor(cx) {
@@ -98,6 +118,7 @@ export class Menu {
     this.target = currentTarget(p.pane);
     this.state = null;
     this.busy = false;
+    this.page = "main";
     cx.spawn(async (cx) => {
       this.state = await menuState(this.name);
       cx.notify();
@@ -105,16 +126,20 @@ export class Menu {
   }
 
   items() {
-    return this.state ? menuItems(this.state) : [];
+    return this.state ? menuItems(this.state, this.page) : [];
   }
 
   height() {
-    return menuHeight(this.items());
+    return this.state ? menuSize(this.state) : 0;
   }
 
   // One action at a time; a failure is said in a toast. The menu stays open for further changes.
   run(act, cx) {
     if (this.busy) return;
+    if (act.type === "page") {
+      this.page = act.page;
+      return cx.notify();
+    }
     this.busy = true;
     cx.notify();
     cx.spawn(async (cx) => {
@@ -125,6 +150,7 @@ export class Menu {
       }
       this.busy = false;
       if (act.type === "start") return closeOverlay(props().overlay);
+      if (act.then) this.page = act.then;
       this.state = await menuState(this.name);
       cx.notify();
     });
@@ -205,7 +231,7 @@ export class Menu {
       .when(enabled, (el) => el.cursor_pointer().hover((s) => s.bg(t.selected)).on_click((_e, cx) => this.run(item.act, cx)))
       .child(div().w(14).flex_none().text_color(t.accent).child(item.check ? "✓" : ""))
       .child(div().flex_1().min_w(0).truncate().child(item.label))
-      .when(Boolean(item.hint), (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(item.hint)));
+      .when(Boolean(item.hint), (el) => el.child(div().id(`${item.id}-hint`).flex_none().max_w(150).truncate().text_size(11).text_color(t.dim).tooltip(item.hint).child(item.hint)));
   }
 
   render() {

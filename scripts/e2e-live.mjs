@@ -123,7 +123,8 @@ try {
     writeFileSync(doc.path, TEXT);
     // Every harness starts layered: an included document first, then its own.
     const docs = [BASE, doc];
-    const profile = { name: `e2e-${harness}`, harness, cwd, include: ["e2e-base"], docs };
+    // Bypass on for every harness: its own flag must be in the launch, and the agent must still start.
+    const profile = { name: `e2e-${harness}`, harness, cwd, include: ["e2e-base"], bypass: true, docs };
 
     // 1. an idle shell is replaced in place by the agent
     const { tab, pane } = await freshShellPane(`replace-${harness}`);
@@ -142,6 +143,12 @@ try {
     });
     ok(Boolean(fg), `${harness}: the agent is the foreground process (it started and stayed up)`);
     ok(fg?.cwd === cwd, `${harness}: it runs in the requested folder`);
+
+    // Literal on purpose: not derived from the table under test.
+    const BYPASS = { claude: ["--dangerously-skip-permissions"], pi: ["--approve"], codex: ["--dangerously-bypass-approvals-and-sandbox"] };
+    const run_ = KNOWN[harness].run;
+    const at = launched.argv.indexOf(run_[run_.length - 1]);
+    ok(JSON.stringify(launched.argv.slice(at + 1, at + 1 + BYPASS[harness].length)) === JSON.stringify(BYPASS[harness]), `${harness}: launched with its bypass flag`);
 
     // 3. the folder mode does not change what is attached
     if (harness === "pi") {
@@ -166,7 +173,7 @@ try {
 
   // 5. a start that cannot be created leaves the old pane alone
   const { tab, pane } = await freshShellPane("failure");
-  const bad = { name: "e2e-bad", harness: "pi", cwd: "/definitely/not/a/folder", include: [], docs: [] };
+  const bad = { name: "e2e-bad", harness: "pi", cwd: "/definitely/not/a/folder", include: [], bypass: false, docs: [] };
   let error = null;
   try {
     await startProfile(host, { profile: bad, mode: "own", target: { machine: null, pane } });

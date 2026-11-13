@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ADAPTERS,
+  HARNESSES,
   PROFILE_LABEL,
   editProfile,
   expandHome,
@@ -15,6 +15,7 @@ import {
   problem,
   resolveIncludes,
   shellArgv,
+  summary,
   startProfile,
   tomlString,
 } from "../agent-profiles/mods/agent-profiles/core.js";
@@ -30,9 +31,14 @@ const AGENTS = {
   pi: { key: "pi", run: ["pi"], installed: true },
   codex: { key: "codex", run: ["codex", "--no-daemon"], installed: true },
   gemini: { key: "gemini", run: ["gemini"], installed: true },
+  grok: { key: "grok", run: ["grok"], installed: true },
+  opencode: { key: "opencode", run: ["opencode"], installed: true },
+  cursor: { key: "cursor", run: ["cursor-agent"], installed: true },
+  kimi: { key: "kimi", run: ["kimi"], installed: true },
+  ampy: { key: "amp", run: ["amp"], installed: true },
   amp: { key: "amp", run: ["amp"], installed: false },
 };
-const profile = (o = {}) => ({ name: "nexora", harness: "claude", cwd: null, include: [], docs: [DOC], ...o });
+const profile = (o = {}) => ({ name: "nexora", harness: "claude", cwd: null, include: [], bypass: false, docs: [DOC], ...o });
 const plan = (o = {}) =>
   planLaunch({
     profile: profile(),
@@ -48,10 +54,10 @@ const plan = (o = {}) =>
 
 test("parseProfile accepts a harness and an optional cwd", () => {
   assert.deepEqual(parseProfile("nexora", '{"harness":"claude"}'), {
-    profile: { name: "nexora", harness: "claude", cwd: null, include: [] },
+    profile: { name: "nexora", harness: "claude", cwd: null, include: [], bypass: false },
   });
   assert.deepEqual(parseProfile("ops_2", '{"harness":"pi","cwd":"~/nexora"}'), {
-    profile: { name: "ops_2", harness: "pi", cwd: "~/nexora", include: [] },
+    profile: { name: "ops_2", harness: "pi", cwd: "~/nexora", include: [], bypass: false },
   });
   assert.deepEqual(parseProfile("klik", '{"harness":"pi","include":["general","base-2"]}').profile.include, ["general", "base-2"]);
   assert.deepEqual(parseProfile("a", '{"harness":"codex","cwd":"/srv/app"}').profile.cwd, "/srv/app");
@@ -74,6 +80,12 @@ test("parseProfile rejects bad content with a reason that names the problem", ()
   assert.match(parseProfile("a", '{"harness":"pi","cwd":5}').error, /cwd/);
   assert.match(parseProfile("a", '{"harness":"pi","cwd":"src"}').error, /cwd/);
   assert.match(parseProfile("a", '{"harness":"pi","cwd":"~bob/x"}').error, /cwd/);
+});
+
+test("parseProfile reads bypass, a true or false switch", () => {
+  assert.equal(parseProfile("a", '{"harness":"pi","bypass":true}').profile.bypass, true);
+  assert.equal(parseProfile("a", '{"harness":"pi","bypass":false}').profile.bypass, false);
+  for (const v of ['"yes"', "1", "null"]) assert.match(parseProfile("a", `{"harness":"pi","bypass":${v}}`).error, /bypass/, v);
 });
 
 test("parseProfile rejects a bad include list", () => {
@@ -154,6 +166,12 @@ test("editProfile changes one field and writes the file in one canonical form", 
     cwd: "/srv/app",
     include: ["general", "base"],
   });
+});
+
+test("editProfile turns bypass on and off; off is left out of the file", () => {
+  const on = editProfile("klik", '{"harness":"pi"}', { bypass: true }).text;
+  assert.deepEqual(JSON.parse(on), { harness: "pi", bypass: true });
+  assert.deepEqual(JSON.parse(editProfile("klik", on, { bypass: false }).text), { harness: "pi" });
 });
 
 test("editProfile refuses to write a profile that would not load, and never overwrites a broken file", () => {
@@ -310,7 +328,7 @@ test("planLaunch: no document launches the bare harness", () => {
 test("planLaunch: a harness without a verified adapter fails loudly instead of dropping the document", () => {
   const r = plan({ profile: profile({ harness: "gemini" }), agent: AGENTS.gemini });
   assert.match(r.error, /gemini/);
-  assert.match(r.error, /claude, codex, pi/);
+  assert.match(r.error, /claude, codex, grok, opencode, pi/);
   // ...but it can still be launched when there is nothing to attach.
   const bare = plan({ profile: profile({ harness: "gemini", docs: [] }), agent: AGENTS.gemini });
   assert.deepEqual(bare.argv, wrapped(["gemini"]));
@@ -332,8 +350,65 @@ test("problem is the one rule the list and the launcher share", () => {
   assert.match(problem(profile({ harness: "gemini" }), AGENTS.gemini), /cannot take instructions/);
 });
 
-test("the adapter table is exactly the verified set", () => {
-  assert.deepEqual(Object.keys(ADAPTERS).sort(), ["claude", "codex", "pi"]);
+test("summary is the one line every view shows for a profile", () => {
+  const two = [BASE, DOC];
+  assert.equal(summary(profile({ docs: two }), { name: "Claude Code" }), "Claude Code · general + AGENTS.md");
+  assert.equal(summary(profile({ docs: [], bypass: true }), { name: "Claude Code" }), "Claude Code · no instructions · bypass");
+  assert.equal(summary(profile({ harness: "amp", docs: [] }), null), "amp · no instructions");
+});
+
+test("the harness table is exactly what was checked against each CLI", () => {
+  const withInstructions = Object.keys(HARNESSES).filter((k) => HARNESSES[k].instructions).sort();
+  assert.deepEqual(withInstructions, ["claude", "codex", "grok", "opencode", "pi"]);
+  const bypass = Object.fromEntries(Object.entries(HARNESSES).filter(([, h]) => h.bypass).map(([k, h]) => [k, h.bypass]));
+  assert.deepEqual(bypass, {
+    antigravity: ["--dangerously-skip-permissions"],
+    claude: ["--dangerously-skip-permissions"],
+    codex: ["--dangerously-bypass-approvals-and-sandbox"],
+    copilot: ["--allow-all"],
+    crush: ["--yolo"],
+    cursor: ["--force", "--sandbox", "disabled"],
+    gemini: ["--yolo"],
+    grok: ["--always-approve"],
+    hermes: ["--yolo"],
+    kimi: ["--auto"],
+    opencode: ["--auto"],
+    pi: ["--approve"],
+    qoder: ["--dangerously-skip-permissions"],
+  });
+  assert.equal(HARNESSES.amp, undefined, "amp has no bypass flag and no instruction flag");
+});
+
+test("planLaunch: bypass adds the harness's own flag after its command, before the instructions", () => {
+  const on = (harness, o = {}) => plan({ profile: profile({ harness, bypass: true, docs: [], ...o }), agent: AGENTS[harness] }).argv.slice(6);
+  assert.deepEqual(on("claude", { docs: [DOC] }), ["claude", "--dangerously-skip-permissions", `--append-system-prompt=${DOC.text}`]);
+  assert.deepEqual(on("codex"), ["codex", "--no-daemon", "--dangerously-bypass-approvals-and-sandbox"]);
+  assert.deepEqual(on("pi"), ["pi", "--approve"]);
+  assert.deepEqual(on("kimi"), ["kimi", "--auto"]);
+  assert.deepEqual(on("cursor"), ["cursor-agent", "--force", "--sandbox", "disabled"]);
+  assert.deepEqual(on("gemini"), ["gemini", "--yolo"]);
+  // off: nothing added
+  assert.deepEqual(plan({ profile: profile({ harness: "codex", docs: [] }), agent: AGENTS.codex }).argv.slice(6), ["codex", "--no-daemon"]);
+});
+
+test("planLaunch: Grok takes the documents as one --rules value", () => {
+  const r = plan({ profile: profile({ harness: "grok", docs: [BASE, DOC] }), agent: AGENTS.grok });
+  assert.deepEqual(r.argv.slice(6), ["grok", `--rules=${BASE.text}\n\n${DOC.text}`]);
+});
+
+test("planLaunch: OpenCode gets its documents as extra config instructions, through env, before the command", () => {
+  const r = plan({ profile: profile({ harness: "opencode", bypass: true, docs: [BASE, DOC] }), agent: AGENTS.opencode });
+  const cmd = r.argv.slice(6);
+  assert.equal(cmd[0], "env");
+  assert.ok(cmd[1].startsWith("OPENCODE_CONFIG_CONTENT="));
+  assert.deepEqual(JSON.parse(cmd[1].slice("OPENCODE_CONFIG_CONTENT=".length)), { instructions: [BASE.path, DOC.path] });
+  assert.deepEqual(cmd.slice(2), ["opencode", "--auto"]);
+});
+
+test("problem: bypass on a harness without a verified bypass flag is refused, never started without it", () => {
+  assert.match(problem(profile({ harness: "amp", bypass: true, docs: [] }), AGENTS.ampy), /amp has no bypass mode/);
+  assert.equal(problem(profile({ harness: "amp", docs: [] }), AGENTS.ampy), null, "fine with bypass off");
+  assert.match(plan({ profile: profile({ harness: "amp", bypass: true, docs: [] }), agent: AGENTS.ampy }).error, /bypass/);
 });
 
 // ---- startProfile (the destructive path) --------------------------------------

@@ -11,23 +11,55 @@ export const NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/;
 // The terminal label that names the profile a terminal was started from. A pane header reads it
 // to show "klik-agent" instead of the harness name.
 export const PROFILE_LABEL = "agent-profile";
-const FIELDS = ["harness", "cwd", "include"];
+const FIELDS = ["harness", "cwd", "include", "bypass"];
 const POSIX_SHELLS = ["zsh", "bash", "sh", "dash", "ksh"];
 
-// How each harness takes a persistent instruction document. This table is the one
-// home for the flag names; scripts/verify-harnesses.mjs proves it against the real CLIs.
-// Each takes every document of a profile, in order:
-//   path: the harness reads the files itself; its flag repeats once per file (pi keeps them all).
-//   text: the documents are passed inline as one value. Claude Code keeps only the LAST of a
-//         repeated --append-system-prompt(-file), and Codex has no additive file option.
-//         "=" attaches the value, so a document that starts with "-" cannot read as a flag.
-export const ADAPTERS = {
-  claude: { text: (texts) => [`--append-system-prompt=${texts.join("\n\n")}`] },
-  pi: { path: (files) => files.flatMap((file) => ["--append-system-prompt", file]) },
-  codex: { text: (texts) => ["-c", `developer_instructions=${tomlString(texts.join("\n\n"))}`] },
+// Everything harness-specific, keyed by Herdr's program key (knownAgents().key). This table is the
+// one home for these flags; scripts/verify-harnesses.mjs checks them against the real CLIs.
+//
+// instructions(docs) -> { env?, args }: how the profile's documents ({ path, text }, in order) reach
+//   the harness. Claude Code keeps only the LAST of a repeated --append-system-prompt(-file), and
+//   Codex has no additive file option, so those get one inline value; "=" keeps a document that
+//   starts with "-" from reading as a flag. OpenCode adds config `instructions` through its
+//   OPENCODE_CONFIG_CONTENT override, which it merges after the project's own list.
+// bypass: the flags that run the harness without asking for permission. Each is the harness's own
+//   "skip all approvals" switch, read from its --help. Pi never asks before tool calls; its only
+//   prompt is trusting a folder's project files, which --approve answers.
+// A harness missing from the table, or without one of the two, refuses a profile that asks for it.
+const joined = (docs) => docs.map((d) => d.text).join("\n\n");
+export const HARNESSES = {
+  claude: {
+    instructions: (docs) => ({ args: [`--append-system-prompt=${joined(docs)}`] }),
+    bypass: ["--dangerously-skip-permissions"],
+  },
+  codex: {
+    instructions: (docs) => ({ args: ["-c", `developer_instructions=${tomlString(joined(docs))}`] }),
+    bypass: ["--dangerously-bypass-approvals-and-sandbox"],
+  },
+  pi: {
+    instructions: (docs) => ({ args: docs.flatMap((d) => ["--append-system-prompt", d.path]) }),
+    bypass: ["--approve"],
+  },
+  grok: {
+    instructions: (docs) => ({ args: [`--rules=${joined(docs)}`] }),
+    bypass: ["--always-approve"],
+  },
+  opencode: {
+    instructions: (docs) => ({ env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ instructions: docs.map((d) => d.path) }) }, args: [] }),
+    bypass: ["--auto"],
+  },
+  antigravity: { bypass: ["--dangerously-skip-permissions"] },
+  copilot: { bypass: ["--allow-all"] },
+  crush: { bypass: ["--yolo"] },
+  cursor: { bypass: ["--force", "--sandbox", "disabled"] },
+  gemini: { bypass: ["--yolo"] },
+  hermes: { bypass: ["--yolo"] },
+  // Kimi's --yolo still asks before risky actions; --auto never asks.
+  kimi: { bypass: ["--auto"] },
+  qoder: { bypass: ["--dangerously-skip-permissions"] },
 };
 
-const adapterNames = () => Object.keys(ADAPTERS).sort().join(", ");
+const namesWith = (key) => Object.keys(HARNESSES).filter((k) => HARNESSES[k][key]).sort().join(", ");
 
 export function parseProfile(name, jsonText) {
   if (!NAME_RE.test(name)) {
@@ -62,7 +94,8 @@ export function parseProfile(name, jsonText) {
   if (bad !== undefined) return { error: `"include": "${bad}" is not a profile name` };
   if (include.includes(name)) return { error: `"include": a profile cannot include itself` };
   if (new Set(include).size !== include.length) return { error: '"include" names a profile more than once' };
-  return { profile: { name, harness: raw.harness.trim(), cwd, include } };
+  if (raw.bypass !== undefined && typeof raw.bypass !== "boolean") return { error: '"bypass" must be true or false' };
+  return { profile: { name, harness: raw.harness.trim(), cwd, include, bypass: raw.bypass ?? false } };
 }
 
 // A blank document is no document: there is nothing to attach.
@@ -99,7 +132,7 @@ export function resolveIncludes(profiles) {
 
 // ---- Editing a profile (the options menu) -------------------------------------------
 
-const CHANGES = ["harness", "cwd", "include"];
+const CHANGES = ["harness", "cwd", "include", "bypass"];
 
 // The new profile.json text after a change ({ harness?, cwd? (null clears), include? }), or
 // { error }. A file that does not load is never overwritten, and a change that would leave it
@@ -113,6 +146,7 @@ export function editProfile(name, jsonText, change) {
   const out = { harness: typeof next.harness === "string" ? next.harness.trim() : next.harness };
   if (next.cwd != null) out.cwd = next.cwd;
   if (next.include?.length) out.include = next.include;
+  if (next.bypass) out.bypass = next.bypass;
   const text = `${JSON.stringify(out, null, 2)}\n`;
   const check = parseProfile(name, text);
   return check.error ? { error: check.error } : { text };
@@ -185,14 +219,23 @@ export function problem(profile, agent) {
   if (profile.error) return profile.error;
   if (!agent) return `unknown harness "${profile.harness}"`;
   if (!agent.installed) return `${profile.harness} is not installed`;
-  if (profile.docs.length && !ADAPTERS[profile.harness]) {
-    return `${profile.harness} cannot take instructions yet (supported: ${adapterNames()})`;
+  if (profile.docs.length && !HARNESSES[profile.harness]?.instructions) {
+    return `${profile.harness} cannot take instructions yet (supported: ${namesWith("instructions")})`;
+  }
+  if (profile.bypass && !HARNESSES[profile.harness]?.bypass) {
+    return `${profile.harness} has no bypass mode yet (supported: ${namesWith("bypass")})`;
   }
   return null;
 }
 
 // What a list shows: each profile with its agent and why it cannot start (null: it can). Until
 // Herdr has said which agents exist (agents null), only the profile's own problems count.
+// The one line every view shows for a profile: harness, documents, and bypass when it is on.
+export function summary(p, agent) {
+  const docs = p.docs?.length ? p.docs.map((d) => d.label).join(" + ") : "no instructions";
+  return [agent?.name ?? p.harness, docs, ...(p.bypass ? ["bypass"] : [])].join(" · ");
+}
+
 export function rowsFor(profiles, agents) {
   return profiles.map((p) => {
     const agent = agents?.find((a) => a.key === p.harness) ?? null;
@@ -205,13 +248,14 @@ export function planLaunch({ profile, mode, agent, shell, here, home }) {
   if (blocked) return { error: blocked };
   if (mode === "own" && !profile.cwd) return { error: `${profile.name} has no "cwd" in profile.json` };
 
-  const { docs } = profile;
-  const adapter = ADAPTERS[profile.harness];
-  const attach = !docs.length ? [] : adapter.path ? adapter.path(docs.map((d) => d.path)) : adapter.text(docs.map((d) => d.text));
+  const h = HARNESSES[profile.harness];
+  const inst = profile.docs.length ? h.instructions(profile.docs) : { args: [] };
+  const env = Object.entries(inst.env ?? {}).map(([k, v]) => `${k}=${v}`);
+  const cmd = [...(env.length ? ["env", ...env] : []), ...agent.run, ...(profile.bypass ? h.bypass : []), ...inst.args];
 
   let argv;
   try {
-    argv = shellArgv(shell, [...agent.run, ...attach]);
+    argv = shellArgv(shell, cmd);
   } catch (e) {
     return { error: e.message };
   }

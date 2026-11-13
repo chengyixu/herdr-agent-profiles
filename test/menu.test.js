@@ -10,7 +10,7 @@ import { join } from "node:path";
 register("./stub-loader.mjs", import.meta.url);
 const { find, textOf } = await import("./stubs/gpui-kit.mjs");
 const { default: AgentProfiles } = await import("../agent-profiles/mods/agent-profiles/main.js");
-const { menuHeight } = await import("../agent-profiles/mods/agent-profiles/menu.js");
+const { menuHeight, menuItems, menuSize } = await import("../agent-profiles/mods/agent-profiles/menu.js");
 
 const AGENTS = [
   { key: "claude", name: "Claude Code", run: ["claude"], installed: true, icon: "icons/claude.svg", tint: false },
@@ -18,6 +18,7 @@ const AGENTS = [
   { key: "pi", name: "Pi", run: ["pi"], installed: true, icon: "icons/pi.svg", tint: true },
   { key: "amp", name: "Amp", run: ["amp"], installed: false, icon: "icons/amp.svg", tint: false },
   { key: "gemini", name: "Gemini", run: ["gemini"], installed: true, icon: "icons/gemini.svg", tint: true },
+  { key: "dsh-tui", name: "DeepSeek Harness", run: ["dsh-tui"], installed: true, icon: "icons/dsh-tui.svg", tint: true },
 ];
 
 let root;
@@ -35,14 +36,15 @@ beforeEach(() => {
   profile("klik", { "profile.json": '{ "harness": "pi", "cwd": "~/Klik", "include": ["general"] }\n', "AGENTS.md": "# Klik\n" });
   profile("panor", { "profile.json": '{"harness":"claude","include":["general"]}' });
   profile("broken", { "profile.json": "{nope" });
-  profile("geminiish", { "profile.json": '{"harness":"gemini"}' });
+  profile("oddball", { "profile.json": '{"harness":"dsh-tui"}' });
+  profile("risky", { "profile.json": '{"harness":"dsh-tui","bypass":true}' });
   profile("dangling", { "profile.json": '{"harness":"pi","include":["nowhere"]}', "AGENTS.md": "# D\n" });
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 const tick = () => new Promise((r) => setTimeout(r, 40));
 
-function app({ name = "klik", platform = "macos", picked = null, writeFails = false } = {}) {
+function app({ name = "klik", platform = "macos", picked = null, writeFails = false, agents = AGENTS } = {}) {
   const env = {
     commands: [],
     execs: [],
@@ -61,7 +63,7 @@ function app({ name = "klik", platform = "macos", picked = null, writeFails = fa
       { pane: "pOTHER", terminal: "t-other", cwd: "/work/other", status: null, zoomed: false, program: { shell: true } },
     ],
     terminals: () => [],
-    knownAgents: async () => AGENTS,
+    knownAgents: async () => agents,
     props: () => ({ view: "menu", profile: name, pane: "pA", overlay: "ov-menu" }),
     closeOverlay: (id) => env.closed.push(id),
     notify: (n) => env.notified.push(n),
@@ -115,33 +117,89 @@ test("the menu shows the profile's settings: harness, folder, attached profiles 
   const text = textOf(t);
   assert.match(text, /klik/);
   assert.match(text, /Pi · general \+ AGENTS\.md/);
-  for (const id of ["ap-m-here", "ap-m-own", "ap-m-harness-claude", "ap-m-harness-codex", "ap-m-harness-pi", "ap-m-folder", "ap-m-nofolder", "ap-m-include-general", "ap-m-include-base", "ap-m-doc", "ap-m-json", "ap-m-reveal"]) {
+  for (const id of ["ap-m-here", "ap-m-own", "ap-m-harness", "ap-m-bypass", "ap-m-folder", "ap-m-nofolder", "ap-m-include-general", "ap-m-include-base", "ap-m-doc", "ap-m-json", "ap-m-reveal"]) {
     assert.ok(find(t, id), id);
   }
-  assert.equal(find(t, "ap-m-harness-amp"), null, "an agent that is not installed is not offered");
-  assert.equal(find(t, "ap-m-harness-gemini"), null, "nor one that cannot take instructions: it keeps the menu short");
-  assert.ok(checked(t, "ap-m-harness-pi") && !checked(t, "ap-m-harness-claude"));
+  assert.match(textOf(find(t, "ap-m-harness")), /Harness: Pi/);
+  assert.equal(find(t, "ap-m-harness-pi"), null, "the harness list is on its own page");
   assert.match(textOf(find(t, "ap-m-folder")), /~\/Klik/);
   assert.ok(checked(t, "ap-m-include-general") && !checked(t, "ap-m-include-base"));
   assert.equal(find(t, "ap-m-include-panor"), null, "a profile without a document cannot be attached");
   assert.equal(find(t, "ap-m-include-klik"), null, "not itself");
 });
 
-test("choosing a harness rewrites profile.json, keeps the rest, and the menu shows the new choice", async () => {
+test("the harness page lists the installed harnesses from the table, and what each can do", async () => {
+  const { tree, click } = await menu();
+  await click("ap-m-harness");
+  const t = tree();
+  for (const k of ["claude", "codex", "pi", "gemini"]) assert.ok(find(t, `ap-m-harness-${k}`), k);
+  assert.equal(find(t, "ap-m-harness-amp"), null, "not installed");
+  assert.equal(find(t, "ap-m-harness-dsh-tui"), null, "not in the table: nothing checked about it");
+  assert.ok(checked(t, "ap-m-harness-pi") && !checked(t, "ap-m-harness-claude"));
+  assert.match(textOf(find(t, "ap-m-harness-claude")), /instructions · bypass/);
+  assert.match(textOf(find(t, "ap-m-harness-gemini")), /bypass only/);
+  await click("ap-m-back");
+  assert.ok(find(tree(), "ap-m-folder"), "back on the main page");
+});
+
+test("choosing a harness rewrites profile.json, keeps the rest, and goes back to the main page", async () => {
   const { env, tree, click } = await menu();
+  await click("ap-m-harness");
   await click("ap-m-harness-claude");
   assert.deepEqual(json("klik"), { harness: "claude", cwd: "~/Klik", include: ["general"] });
-  assert.ok(checked(tree(), "ap-m-harness-claude"));
+  assert.match(textOf(find(tree(), "ap-m-harness")), /Harness: Claude Code/);
   assert.deepEqual(env.closed, [], "the menu stays open for more changes");
   assert.deepEqual(env.notified, []);
 });
 
-test("a profile on another harness still shows it, checked, and can move to a supported one", async () => {
-  const { tree, click } = await menu(app({ name: "geminiish" }));
-  assert.ok(checked(tree(), "ap-m-harness-gemini"));
+test("a profile on a harness outside the table still shows it, checked, and can move to one in it", async () => {
+  const { tree, click } = await menu(app({ name: "oddball" }));
+  await click("ap-m-harness");
+  assert.ok(checked(tree(), "ap-m-harness-dsh-tui"));
   await click("ap-m-harness-pi");
-  assert.equal(json("geminiish").harness, "pi");
-  assert.equal(find(tree(), "ap-m-harness-gemini"), null);
+  assert.equal(json("oddball").harness, "pi");
+  await click("ap-m-harness");
+  assert.equal(find(tree(), "ap-m-harness-dsh-tui"), null);
+});
+
+test("the bypass toggle writes bypass: true, shows the harness's own flag, and turns off again", async () => {
+  const { tree, click } = await menu();
+  assert.ok(!checked(tree(), "ap-m-bypass"));
+  assert.match(textOf(find(tree(), "ap-m-bypass")), /--approve/);
+  await click("ap-m-bypass");
+  assert.equal(json("klik").bypass, true);
+  assert.ok(checked(tree(), "ap-m-bypass"));
+  assert.match(textOf(tree()), /Pi · general \+ AGENTS\.md · bypass/);
+  await click("ap-m-bypass");
+  assert.equal("bypass" in json("klik"), false);
+});
+
+test("switching harness keeps bypass and shows the new harness's flag", async () => {
+  const { tree, click } = await menu();
+  await click("ap-m-bypass");
+  await click("ap-m-harness");
+  await click("ap-m-harness-claude");
+  assert.equal(json("klik").bypass, true);
+  assert.match(textOf(find(tree(), "ap-m-bypass")), /--dangerously-skip-permissions/);
+});
+
+test("a harness without a bypass flag cannot turn it on; one already on can be turned off", async () => {
+  const off = await menu(app({ name: "oddball" }));
+  assert.equal(find(off.tree(), "ap-m-bypass").$on.on_click, undefined);
+  assert.match(textOf(find(off.tree(), "ap-m-bypass")), /not available for DeepSeek Harness/);
+  const on = await menu(app({ name: "risky" }));
+  assert.match(textOf(on.tree()), /dsh-tui has no bypass mode/);
+  await on.click("ap-m-bypass");
+  assert.equal("bypass" in json("risky"), false);
+  assert.ok(find(on.tree(), "ap-m-here").$on.on_click, "startable once bypass is off");
+});
+
+test("Start here with bypass on launches with the harness's flag", async () => {
+  const { env, click } = await menu();
+  await click("ap-m-bypass");
+  await click("ap-m-here");
+  const argv = env.commands.find(([n]) => n === "terminal.open")[1].argv;
+  assert.deepEqual(argv.slice(6, 8), ["pi", "--approve"]);
 });
 
 test("choosing a folder stores it under ~; cancelling the picker writes nothing", async () => {
@@ -223,7 +281,7 @@ test("a broken profile.json offers only to open it; nothing can overwrite it", a
   const { tree } = await menu(app({ name: "broken" }));
   const t = tree();
   assert.match(textOf(t), /profile\.json is not valid JSON/);
-  for (const id of ["ap-m-harness-pi", "ap-m-folder", "ap-m-include-general"]) assert.equal(find(t, id), null, id);
+  for (const id of ["ap-m-harness", "ap-m-bypass", "ap-m-folder", "ap-m-include-general"]) assert.equal(find(t, id), null, id);
   assert.equal(find(t, "ap-m-here").$on.on_click, undefined);
   assert.ok(find(t, "ap-m-json").$on.on_click);
   assert.equal(readFileSync(join(dir("broken"), "profile.json"), "utf8"), "{nope");
@@ -242,7 +300,7 @@ test("a dangling include can be unticked from the menu, which makes the profile 
 test("a failed write says why in a toast and leaves the file as it was", async () => {
   const { env, click } = await menu(app({ writeFails: true }));
   const before = readFileSync(join(dir("klik"), "profile.json"), "utf8");
-  await click("ap-m-harness-claude");
+  await click("ap-m-bypass");
   assert.equal(env.notified.length, 1);
   assert.equal(env.notified[0].level, "error");
   assert.match(env.notified[0].body, /changed since it was read/);
@@ -263,13 +321,26 @@ test("Start in its folder uses the profile's folder", async () => {
   assert.equal(env.commands.find(([n]) => n === "terminal.open")[1].folder, "/Users/me/Klik");
 });
 
+test("with many harnesses installed, the popup is as tall as the harness page, not cut off", async () => {
+  const many = ["claude", "codex", "pi", "grok", "opencode", "antigravity", "copilot", "crush", "cursor", "gemini", "hermes", "kimi", "qoder"]
+    .map((key) => ({ key, name: key, run: [key], installed: true, icon: null, tint: true }));
+  const { mod } = await menu(app({ name: "general", agents: many }));
+  const main = menuHeight(menuItems(mod.part.state, "main"));
+  const page = menuHeight(menuItems(mod.part.state, "harness"));
+  assert.ok(page > main, `fixture: the harness page (${page}) must be the taller (${main})`);
+  assert.equal(mod.part.height(), page);
+});
+
 test("the menu's height is the height its rows need, and stays the same as settings change", async () => {
   const { mod, click } = await menu();
   const h = mod.part.height();
-  assert.equal(h, menuHeight(mod.part.items()));
+  assert.equal(h, menuSize(mod.part.state), "sized for the taller page");
+  assert.ok(menuHeight(menuItems(mod.part.state, "main")) <= h && menuHeight(menuItems(mod.part.state, "harness")) <= h);
   assert.ok(h > 300 && h < 900, String(h));
   await click("ap-m-nofolder");
   await click("ap-m-include-base");
+  await click("ap-m-bypass");
+  await click("ap-m-harness");
   await click("ap-m-harness-claude");
   assert.equal(mod.part.height(), h);
 });
