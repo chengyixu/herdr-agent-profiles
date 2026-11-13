@@ -19,6 +19,7 @@ it is built this way is in [docs/adr/0001](docs/adr/0001-spawn-into-the-current-
 | How to start an agent | Herdr's program table (`knownAgents().run`, `programs.json`) |
 | A profile | `~/.config/herdr-app/agent-profiles/<name>/` (`$HERDR_APP_HOME` respected through `appHome()`) |
 | Which flag attaches a document to which harness | `ADAPTERS` in `core.js`, proven by `scripts/verify-harnesses.mjs` |
+| Which profile a terminal was started from | its `agent-profile` label, set by `startProfile` (`PROFILE_LABEL` in `core.js`) |
 | Which documents a profile attaches, in order | `resolveIncludes()` in `core.js` (`include` in `profile.json`) |
 | Rules shared by several profiles | one profile's document, included by the others |
 | Whether a profile can start, and why not | `problem()` in `core.js`: the list greys a row out with it, the launcher refuses with it |

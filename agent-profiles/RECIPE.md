@@ -60,6 +60,7 @@ The options menu: Option-click or Control-click on a row opens it too, and a rig
   1. `pane.focus {pane}`
   2. `terminal.open {argv, folder?, place: "right"}` with `argv = [$SHELL, "-l", "-i", "-c", "\"$@\"; exec \"$0\" -l -i", $SHELL, ...harnessCommand, ...documentFlag]`. Herdr starts a split pane's program directly with a bare PATH, so the login shell is what finds nvm-installed tools; the arguments travel unquoted, and a shell stays open after the agent exits. `$SHELL` is read with `sh -c 'printf %s "$SHELL"'`.
   3. For an idle shell: `pane.close {pane: <old>}`, then `pane.zoom {pane: <new>}` if the old pane was zoomed.
+  4. `hc label <new terminal> agent-profile=<name>`, last, so a failure costs only the name (an error toast says so). A pane header that reads this label can show the profile name instead of the harness; Herdr's own `pane` header does not, so a person who wants that clones it (`mod.clone`) and puts the label first in its name, while `program.agent` is true.
 - **Login shells** that were checked: zsh, bash, sh, dash, ksh. Any other (fish, for one) is refused with a message.
 - Customization points: `ADAPTERS` and `POSIX_SHELLS` at the top of `core.js`; the size and offset in `mod.json`; the key in `keys.json`.
 

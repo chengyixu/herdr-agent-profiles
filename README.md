@@ -78,6 +78,27 @@ The list:
 - It follows the profile folder: add, edit or remove a profile and the list updates by itself.
 - It never takes the keyboard from your terminal. On the narrow sidebar rail it shows icons only.
 
+### Show the profile's name in the pane header
+
+Every terminal the mod starts carries the label `agent-profile=<name>`. Herdr's pane header shows the harness
+("Pi", "Claude Code"); to show the profile name instead (the icon still says which harness), make your own copy of
+Herdr's header and point your layout at it:
+
+```sh
+herdr-app do mod.clone '{"name":"pane","as":"profile-pane"}'
+```
+
+In `mods/profile-pane/main.js`, import `terminals` from `"herdr"` and put the label first where the header picks
+its name:
+
+```js
+const profile = p.program?.agent ? terminals().find((x) => x.address === p.terminal)?.labels?.["agent-profile"] : null;
+const name = profile || /* Herdr's original expression */;
+```
+
+Then set the pane header in your layout copy to `{ "mod": "profile-pane" }`. Only while the agent runs: when it
+exits and the shell is back, the header shows the shell again. The copy no longer gets Herdr's updates to `pane`.
+
 ## Make a profile
 
 One folder per agent, in `~/.config/herdr-app/agent-profiles/`. The folder name is the agent's name
