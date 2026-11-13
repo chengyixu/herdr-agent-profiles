@@ -19,7 +19,7 @@ Right-click (also Option-click and Control-click) on a sidebar row opens a menu.
 - **Rows are data.** `menuItems` turns the profile into rows; the menu draws them, and the sidebar sizes the popup
   from the same rows before opening it. The rows do not change in number when a setting changes (start rows are
   dimmed rather than removed), so the popup keeps its size while the person works in it.
-- **Short harness list.** Only harnesses that can take instructions (`ADAPTERS`) are offered, plus the current
+- **Short harness list.** Only harnesses that can take instructions (now `HARNESSES`, ADR 0005) are offered, plus the current
   one. Every installed agent made the menu taller than the window on a machine with 15 of them.
 - **Attachments follow `include`'s rules.** `includeChoices` offers only profiles with a document of their own and
   no includes, and offers nothing to a profile others include, saying who does.

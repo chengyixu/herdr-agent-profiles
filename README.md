@@ -64,8 +64,10 @@ The list:
   profile's own folder. A profile that cannot start is dimmed; hover it to see why.
 - **Right-click** a profile (or Option-click, or Control-click) for its options menu:
   - Start here, or in its own folder.
-  - **Harness**: Claude Code, Codex or Pi, the ones that can take instructions. Another harness can be set in
-    `profile.json` and then shows here too.
+  - **Harness: Pi** opens a page of the installed harnesses in the table, each marked "instructions · bypass" or
+    "bypass only". Another harness can be set in `profile.json` and then shows there too.
+  - **Bypass permissions**: on or off, with the harness's flag beside it. Off is always allowed; on only for a
+    harness that has a bypass flag.
   - **Folder**: choose one with the system picker (stored as `~/...`), or none (it starts where you are).
   - **Also attach the instructions of**: tick other profiles to `include`. A profile that others attach cannot
     attach any itself; the menu says who attaches it.
@@ -115,6 +117,7 @@ One folder per agent, in `~/.config/herdr-app/agent-profiles/`. The folder name 
 |---|---|
 | `harness` | Required. The key of an agent in Herdr's program table: `claude`, `codex`, `pi`, ... |
 | `cwd` | Optional. The agent's own folder: an absolute path or `~/...`. Without it, only "start here" is offered. |
+| `bypass` | Optional, `true` or `false`. Start with the harness's skip-all-approvals flag (see Harnesses). |
 | `include` | Optional. Other profiles whose document is attached first, in order: `["general"]`. |
 
 Unknown fields are an error, not ignored, so a typo cannot silently change what starts.
@@ -152,20 +155,40 @@ pane is closed only after that worked. If the agent cannot start, the old pane i
 
 ## Harnesses
 
-| Harness | How the documents are attached | Checked against |
+Every harness-specific flag lives in one table, `HARNESSES` in `core.js`, read from each CLI's own `--help`
+and checked against it by `scripts/verify-harnesses.mjs` (a flag a CLI renames or drops fails that check).
+
+| Harness | Instructions | Bypass flag |
 |---|---|---|
-| Claude Code | `--append-system-prompt=<texts>` (one value) | `claude` 2.1.316: a live model returned a marker from each of two documents |
-| Pi | `--append-system-prompt <path>`, once per document | `pi` 1.5.2: both markers are in the assembled system prompt, in order |
-| Codex | `-c developer_instructions=<texts>` (one value) | `codex` 0.166.0: the texts are one `developer` message, verbatim and in order |
+| Claude Code | `--append-system-prompt=<texts>` (one value; live-checked) | `--dangerously-skip-permissions` |
+| Codex | `-c developer_instructions=<texts>` (one value) | `--dangerously-bypass-approvals-and-sandbox` |
+| Pi | `--append-system-prompt <path>`, once per document | `--approve` (Pi never asks before tools; this trusts the folder's project files) |
+| Grok | `--rules=<texts>` (one value; live-checked) | `--always-approve` |
+| OpenCode | `OPENCODE_CONFIG_CONTENT={"instructions":[paths]}`, added after the project's own list | `--auto` |
+| Antigravity | — | `--dangerously-skip-permissions` |
+| Copilot | — | `--allow-all` |
+| Crush | — | `--yolo` |
+| Cursor | — | `--force --sandbox disabled` |
+| Gemini | — | `--yolo` |
+| Hermes | — | `--yolo` |
+| Kimi | — | `--auto` (its `--yolo` still asks before risky actions) |
+| Qoder | — | `--dangerously-skip-permissions` |
 
-With several documents, the texts are joined with a blank line between them. Claude Code keeps only the
-**last** of a repeated `--append-system-prompt-file`, so Claude gets one inline value. The `=` form keeps a
-document that starts with `-` (a markdown bullet) from reading as a flag. Codex gets the text as *additional*
-developer instructions. Its `model_instructions_file` option replaces Codex's built-in prompt, so it is not used.
+With several documents, the texts are joined with a blank line. Claude Code keeps only the **last** of a repeated
+`--append-system-prompt-file`, so Claude gets one inline value; the `=` form keeps a document that starts with `-`
+from reading as a flag. Codex gets *additional* developer instructions (`model_instructions_file` would replace its
+built-in prompt).
 
-Another harness starts fine **without** a document. With a document it is refused with a clear message
-("gemini cannot take instructions yet") rather than started without its instructions. To add one, add a line to `ADAPTERS` in `core.js` and a check
-to `scripts/verify-harnesses.mjs`.
+A harness with "—" starts fine without a document; with one, the profile is refused ("gemini cannot take
+instructions yet") rather than started without its instructions. Likewise, bypass on a harness with no bypass flag
+(Amp has only a settings-file switch, which would replace your whole settings) is refused, never started in normal
+mode. Kiro is not in the table: its chat binary is missing on the machine it was built on.
+
+### Bypass
+
+`"bypass": true` in `profile.json` (or the menu's **Bypass permissions** toggle) starts the agent with its harness's
+own skip-all-approvals flag, shown next to the toggle. The agent then runs commands and edits files without
+asking. The list shows `· bypass` on those profiles. Turning it off removes the field.
 
 The command that starts the harness is Herdr's own (`programs.json`, `run`). To add flags, change it there
 and every profile follows:
@@ -200,7 +223,7 @@ it answers with what it made or why it could not, and the next step depends on t
 5. `terminal.open` beside the focused pane, in the chosen folder. Then, for an idle shell, `pane.close` on
    the old pane (and `pane.zoom` on the new one if the old was maximized).
 
-Why these choices are in [`docs/adr/`](docs/adr/0001-spawn-into-the-current-pane.md) (0001 the launch, 0002 `include`, 0003 the sidebar, 0004 the options menu).
+Why these choices are in [`docs/adr/`](docs/adr/0001-spawn-into-the-current-pane.md) (0001 the launch, 0002 `include`, 0003 the sidebar, 0004 the options menu, 0005 harnesses and bypass).
 
 ## Good to know
 

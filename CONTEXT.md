@@ -18,7 +18,7 @@ it is built this way is in [docs/adr/0001](docs/adr/0001-spawn-into-the-current-
 |---|---|
 | How to start an agent | Herdr's program table (`knownAgents().run`, `programs.json`) |
 | A profile | `~/.config/herdr-app/agent-profiles/<name>/` (`$HERDR_APP_HOME` respected through `appHome()`) |
-| Which flag attaches a document to which harness | `ADAPTERS` in `core.js`, proven by `scripts/verify-harnesses.mjs` |
+| Each harness's instruction and bypass flags | `HARNESSES` in `core.js`, checked against each CLI's `--help` (and live for Claude and Grok) by `scripts/verify-harnesses.mjs` |
 | Which profile a terminal was started from | its `agent-profile` label, set by `startProfile` (`PROFILE_LABEL` in `core.js`) |
 | Which documents a profile attaches, in order | `resolveIncludes()` in `core.js` (`include` in `profile.json`) |
 | Rules shared by several profiles | one profile's document, included by the others |
@@ -62,6 +62,9 @@ What each layer is for:
 | A sidebar test passed for the wrong reason: it redrew after moving focus, so a block that remembered only the last pane it drew also passed | the test clicks a row drawn before the focus moved; mutation-checked |
 | The options menu listed every installed agent: on this Mac 15, so the menu ran off the window (seen on screen) | it offers only the harnesses that can take instructions, plus the current one; tested |
 | A mutation check found two weak tests: a cancelled folder picker and a click on a broken row could have shown an error toast unnoticed | both tests now also require no toast |
+| Kimi's `--yolo` sounds like a full bypass but still asks before risky actions; `--auto` is the one that never asks | read from `kimi --help`; the table test and the contract check pin `--auto` |
+| Amp has no bypass flag, only `amp.dangerouslyAllowAll` in a settings file that `--settings-file` would replace whole | left out of the table: bypass on Amp is refused, not faked |
+| A mutation check found the popup could be sized for the main page only: the harness page would have been cut off with many harnesses installed | a test with 13 harnesses and an exact-height check in the sidebar test |
 | Claude Code keeps only the **last** of a repeated `--append-system-prompt-file`: an included document was silently dropped (ADR 0002) | the live contract check asks for a codeword from each of two documents; Claude now takes one inline value |
 
 Every unit and glue test was also mutation-checked: the dangerous mutations (close before create, ignore sub-agent
