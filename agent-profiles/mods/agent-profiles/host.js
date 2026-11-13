@@ -1,7 +1,7 @@
 // The wiring of Herdr's APIs into core.js's `host`, shared by the popup and the sidebar block.
 // Every function here makes host calls, so they run inside a view, never at module scope.
 import * as fs from "fs/promises";
-import { appHome, exec, focused, home, knownAgents, panes, spaces, terminals } from "herdr";
+import { appHome, exec, focused, hc, home, knownAgents, panes, spaces, terminals } from "herdr";
 import { parseProfile, pickDoc, resolveIncludes } from "./core.js";
 
 export const profilesDir = () => `${appHome()}/agent-profiles`;
@@ -58,6 +58,10 @@ export const makeHost = () => ({
     return shell;
   },
   hasChildren: (terminal) => terminals().some((t) => t.parent === terminal && t.state === "live"),
+  label: async (terminal, key, value) => {
+    const r = await hc(["label", terminal, `${key}=${value}`]);
+    if (r.code !== 0) throw new Error(r.stderr.trim() || `hc label exited ${r.code}`);
+  },
   dispatch,
 });
 

@@ -4,6 +4,7 @@ export const appHome = h("appHome");
 export const closeOverlay = h("closeOverlay");
 export const exec = h("exec");
 export const focused = h("focused");
+export const hc = h("hc");
 export const home = h("home");
 export const knownAgents = h("knownAgents");
 export const layout = h("layout");

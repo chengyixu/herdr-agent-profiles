@@ -8,6 +8,9 @@
 // `include` attaches other profiles' documents first, so a shared document has one home.
 
 export const NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/;
+// The terminal label that names the profile a terminal was started from. A pane header reads it
+// to show "klik-agent" instead of the harness name.
+export const PROFILE_LABEL = "agent-profile";
 const FIELDS = ["harness", "cwd", "include"];
 const POSIX_SHELLS = ["zsh", "bash", "sh", "dash", "ksh"];
 
@@ -215,7 +218,7 @@ export function planLaunch({ profile, mode, agent, shell, here, home }) {
   return { argv, folder: mode === "own" ? expandHome(profile.cwd, home) : (here ?? null) };
 }
 
-// host: { agent(harness), shell(), home, hasChildren(terminal), dispatch(command, args) }
+// host: { agent(harness), shell(), home, hasChildren(terminal), dispatch(command, args), label(terminal, key, value) }
 // target: { machine, pane }  (pane: { pane, terminal, cwd, status, program })
 // Order matters: the new terminal must exist before the old pane is closed, and a
 // failure to create it must leave the old pane untouched.
@@ -246,6 +249,12 @@ export async function startProfile(host, { profile, mode, target }) {
     } catch (e) {
       throw new Error(`agent started, but the old shell pane could not be replaced cleanly: ${e.message}`);
     }
+  }
+  // Last: the agent is in place either way, so a failure here only costs the name in its header.
+  try {
+    await host.label(created.terminal, PROFILE_LABEL, profile.name);
+  } catch (e) {
+    throw new Error(`agent started, but its name could not be set: ${e.message}`);
   }
   return { where, pane: created.pane, terminal: created.terminal };
 }

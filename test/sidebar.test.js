@@ -60,6 +60,8 @@ function app({ failOn = null, width = 268, focus = "pA" } = {}) {
     notify: (n) => env.notified.push(n),
     // Each call waits until the test fires it: resolve() = something changed, reject() = no folder.
     watchFolder: () => new Promise((resolve, reject) => env.watches.push({ resolve, reject })),
+    labelled: [],
+    hc: async (args) => (env.labelled.push(args), { code: 0, stdout: "", stderr: "" }),
     exec: async (cmd, args) => {
       if (cmd === "sh") return { code: 0, stdout: "/bin/zsh", stderr: "" };
       const [, name, json] = args;

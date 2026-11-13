@@ -41,7 +41,7 @@ before(() => {
 after(() => rmSync(root, { recursive: true, force: true }));
 
 // A fake Herdr app. `commands` records every `herdr-app do` the mod issues.
-function app({ failOn = null, panes, spacesList } = {}) {
+function app({ failOn = null, panes, spacesList, hcFails = false } = {}) {
   const env = {
     commands: [],
     notified: [],
@@ -57,6 +57,8 @@ function app({ failOn = null, panes, spacesList } = {}) {
     props: () => ({ overlay: "ov1" }),
     closeOverlay: (id) => env.closed.push(id),
     notify: (n) => env.notified.push(n),
+    labelled: [],
+    hc: async (args) => (env.labelled.push(args), hcFails ? { code: 1, stdout: "", stderr: "no such terminal" } : { code: 0, stdout: "", stderr: "" }),
     exec: async (cmd, args) => {
       if (cmd === "sh") return { code: 0, stdout: "/bin/zsh", stderr: "" };
       assert.equal(cmd, "herdr-app");
@@ -147,6 +149,7 @@ test("clicking a row starts it where you are: replace the shell, with the docume
   assert.deepEqual(open_.argv.slice(6), ["claude", "--append-system-prompt=# Reviewer\nBe terse.\n"]);
   assert.deepEqual(env.closed, ["ov1"]);
   assert.deepEqual(env.notified, []);
+  assert.deepEqual(env.labelled, [["label", "t9", "agent-profile=reviewer"]], "the started terminal is named after the profile");
 });
 
 test("a profile that includes another starts with both documents, the included one first", async () => {
@@ -212,6 +215,15 @@ test("a failed start shows an error toast, closes the dialog and never closes th
   assert.match(env.notified[0].title, /reviewer/);
   assert.match(env.notified[0].body, /cannot do terminal\.open/);
   assert.deepEqual(env.closed, ["ov1"]);
+});
+
+test("if the name cannot be set, the agent still starts and a toast says why", async () => {
+  const { env, tree, cx, settle } = await open(app({ hcFails: true }));
+  find(tree(), "ap-reviewer").$on.on_click({}, cx);
+  await settle();
+  assert.deepEqual(env.commands.map(([n]) => n), ["pane.focus", "terminal.open", "pane.close"]);
+  assert.equal(env.notified.length, 1);
+  assert.match(env.notified[0].body, /name could not be set: no such terminal/);
 });
 
 test("a second click while one is starting does nothing", async () => {

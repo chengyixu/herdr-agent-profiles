@@ -76,6 +76,8 @@ function app({ name = "klik", platform = "macos", picked = null, writeFails = fa
       env.writes++;
       return null;
     },
+    labelled: [],
+    hc: async (args) => (env.labelled.push(args), { code: 0, stdout: "", stderr: "" }),
     exec: async (cmd, args) => {
       if (cmd === "sh") return { code: 0, stdout: "/bin/zsh", stderr: "" };
       if (cmd === "herdr-app") {

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ADAPTERS,
+  PROFILE_LABEL,
   editProfile,
   expandHome,
   homeRelative,
@@ -342,8 +343,13 @@ const BUSY = { ...IDLE, status: "working", program: { shell: false } };
 
 function fakeHost(over = {}) {
   const calls = [];
+  const labels = [];
   return {
     calls,
+    labels,
+    label: async (terminal, key, value) => {
+      labels.push([terminal, key, value]);
+    },
     agent: async (h) => AGENTS[h] ?? null,
     shell: async () => SHELL,
     home: HOME,
@@ -381,6 +387,39 @@ test("startProfile keeps a maximized pane maximized when the agent takes its pla
   const beside = fakeHost();
   await startProfile(beside, { profile: profile(), mode: "here", target: { machine: null, pane: { ...BUSY, zoomed: true } } });
   assert.deepEqual(names(beside), ["pane.focus", "terminal.open"]);
+});
+
+test("startProfile names the new terminal after the profile, after the agent is in place", async () => {
+  assert.equal(PROFILE_LABEL, "agent-profile");
+  for (const pane of [IDLE, BUSY]) {
+    const host = fakeHost();
+    await startProfile(host, { profile: profile(), mode: "here", target: { machine: null, pane } });
+    assert.deepEqual(host.labels, [["t9", "agent-profile", "nexora"]]);
+  }
+});
+
+test("startProfile: a name that cannot be set does not undo the start, and says so", async () => {
+  const host = fakeHost({
+    label: async () => {
+      throw new Error("hc: no such terminal");
+    },
+  });
+  await assert.rejects(
+    startProfile(host, { profile: profile(), mode: "here", target: { machine: null, pane: IDLE } }),
+    /agent started, but its name could not be set: hc: no such terminal/,
+  );
+  assert.deepEqual(names(host), ["pane.focus", "terminal.open", "pane.close"], "the idle shell was still replaced");
+});
+
+test("startProfile labels nothing when the terminal could not be created", async () => {
+  const host = fakeHost({
+    dispatch: async (name) => {
+      if (name === "terminal.open") throw new Error("cannot start");
+      return { ok: true };
+    },
+  });
+  await assert.rejects(startProfile(host, { profile: profile(), mode: "here", target: { machine: null, pane: IDLE } }));
+  assert.deepEqual(host.labels, []);
 });
 
 test("startProfile never closes a pane that is busy, or that has children", async () => {

@@ -61,6 +61,10 @@ const host = {
   shell: async () => process.env.SHELL,
   hasChildren: (terminal) => (json(run("hc", ["ls", "--json"]))?.terminals ?? []).some((t) => t.parent === terminal && t.state === "live"),
   dispatch: async (command, args) => herdr(command, args),
+  label: async (terminal, key, value) => {
+    const r = run("hc", ["label", terminal, `${key}=${value}`]);
+    if (r.status !== 0) throw new Error(r.stderr.trim());
+  },
 };
 
 const originalSpace = json(run("herdr-app", ["status"])).space;
@@ -130,6 +134,7 @@ try {
 
     // 2. Herdr launched the agent with the instructions, in the folder asked for
     const launched = info(started.terminal);
+    ok(launched?.labels?.["agent-profile"] === profile.name, `${harness}: the terminal is named after the profile`);
     ok(Boolean(launched) && attached(harness, launched.argv, docs), `${harness}: launched with both documents attached, the included one first`);
     const fg = await waitFor(() => {
       const f = info(started.terminal)?.foreground;
